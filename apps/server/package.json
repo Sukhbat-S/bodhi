@@ -1,0 +1,27 @@
+{
+  "name": "@seneca/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@seneca/core": "*",
+    "@seneca/bridge": "*",
+    "@seneca/db": "*",
+    "@seneca/channel-telegram": "*",
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.7.0",
+    "dotenv": "^16.4.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0"
+  }
+}

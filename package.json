@@ -1,0 +1,18 @@
+{
+  "name": "seneca",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "packages/channels/*",
+    "packages/tools/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "node --run dev --workspace=@seneca/server",
+    "build": "npm run build --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

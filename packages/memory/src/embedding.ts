@@ -3,7 +3,7 @@
 // ============================================================
 
 const VOYAGE_API_URL = "https://api.voyageai.com/v1/embeddings";
-const MODEL = "voyage-3-lite";
+const MODEL = "voyage-3";
 const DIMENSIONS = 1024;
 
 export async function embed(

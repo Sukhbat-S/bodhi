@@ -22,6 +22,7 @@ import { Bridge } from "@seneca/bridge";
 import { getDb } from "@seneca/db";
 import { MemoryService, MemoryExtractor, MemoryContextProvider } from "@seneca/memory";
 import { TelegramBot } from "@seneca/channel-telegram";
+import { Scheduler } from "@seneca/scheduler";
 import { loadConfig } from "./config.js";
 
 async function main() {
@@ -89,7 +90,17 @@ async function main() {
   });
   console.log(`  Telegram: configured (user ${config.TELEGRAM_ALLOWED_USER_ID})`);
 
-  // 9. Set up Hono API server
+  // 9. Initialize Scheduler (proactive briefings via cron)
+  const scheduler = new Scheduler({
+    agent,
+    telegram: telegramBot,
+    memoryService,
+    contextEngine,
+    timezone: "Asia/Ulaanbaatar",
+  });
+  console.log("  Scheduler: initialized (morning/evening/weekly briefings)");
+
+  // 10. Set up Hono API server (12 endpoints)
   const app = new Hono();
 
   // CORS for dashboard (Vite dev on port 5173)
@@ -250,12 +261,27 @@ async function main() {
     });
   });
 
+  // API: Scheduler
+  app.get("/api/scheduler", (c) => {
+    return c.json(scheduler.getStatus());
+  });
+
+  app.post("/api/scheduler/trigger", async (c) => {
+    const body = await c.req.json<{ type: "morning" | "evening" | "weekly" }>();
+    if (!body.type || !["morning", "evening", "weekly"].includes(body.type)) {
+      return c.json({ error: "type must be 'morning', 'evening', or 'weekly'" }, 400);
+    }
+    const result = await scheduler.trigger(body.type);
+    return c.json(result);
+  });
+
   // API: Status
   app.get("/api/status", (c) => {
     return c.json({
       agent: "online",
       bridge: bridge.isRunning ? "running" : "idle",
       memory: "active",
+      scheduler: scheduler.getStatus().running ? "running" : "stopped",
       uptime: process.uptime(),
       channels: {
         telegram: "connected",
@@ -265,7 +291,7 @@ async function main() {
     });
   });
 
-  // 10. Start everything
+  // 11. Start everything
   console.log("\n  Starting services...");
 
   // Start Hono API server
@@ -273,20 +299,22 @@ async function main() {
     console.log(`  API server: http://localhost:${config.PORT}`);
   });
 
-  // Start Telegram bot (non-fatal — server stays up if bot token is invalid)
-  try {
-    await telegramBot.start();
-  } catch (error) {
+  // Start Scheduler (cron jobs — doesn't depend on Telegram being ready)
+  scheduler.start();
+
+  // Start Telegram bot (non-blocking — launch() never resolves during long-polling)
+  telegramBot.start().catch((error) => {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`  Telegram: FAILED to start — ${msg}`);
     console.error("  (Server continues without Telegram)");
-  }
+  });
 
   console.log("\n🌳  BODHI is online.\n");
 
   // Graceful shutdown
   const shutdown = async () => {
     console.log("\n🌳  BODHI shutting down...");
+    scheduler.stop();
     try {
       await telegramBot.stop();
     } catch {

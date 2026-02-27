@@ -371,6 +371,21 @@ export class TelegramBot {
     }
   }
 
+  /**
+   * Send a proactive message to the user (no incoming message context needed).
+   * Used by Scheduler for briefings/reflections.
+   */
+  async sendProactiveMessage(text: string): Promise<void> {
+    try {
+      await this.bot.telegram.sendMessage(this.allowedUserId, text, {
+        parse_mode: "Markdown",
+      });
+    } catch {
+      // Retry without Markdown if parse fails
+      await this.bot.telegram.sendMessage(this.allowedUserId, text);
+    }
+  }
+
   async start() {
     console.log("[telegram] Bot starting...");
     await this.bot.launch();

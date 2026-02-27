@@ -23,6 +23,7 @@ export interface StatusResponse {
   agent: string;
   bridge: string;
   memory: string;
+  scheduler?: string;
   uptime: number;
   channels: Record<string, string>;
 }
@@ -97,6 +98,35 @@ export function deleteMemory(id: string) {
   return request<{ deleted: boolean }>(`/memories/${id}`, {
     method: "DELETE",
   });
+}
+
+// --- Scheduler ---
+
+export interface SchedulerJob {
+  type: "morning" | "evening" | "weekly";
+  lastRun: string | null;
+  lastResult: "sent" | "skipped" | "error" | null;
+  lastDurationMs: number | null;
+}
+
+export interface SchedulerStatus {
+  running: boolean;
+  timezone: string;
+  jobs: SchedulerJob[];
+}
+
+export function getSchedulerStatus() {
+  return request<SchedulerStatus>("/scheduler");
+}
+
+export function triggerBriefing(type: "morning" | "evening" | "weekly") {
+  return request<{ status: string; content?: string; error?: string }>(
+    "/scheduler/trigger",
+    {
+      method: "POST",
+      body: JSON.stringify({ type }),
+    }
+  );
 }
 
 // --- Chat ---

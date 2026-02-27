@@ -16,6 +16,7 @@
     "@seneca/db": "*",
     "@seneca/channel-telegram": "*",
     "@seneca/memory": "*",
+    "@seneca/scheduler": "*",
     "@hono/node-server": "^1.13.0",
     "hono": "^4.7.0",
     "dotenv": "^16.4.0",

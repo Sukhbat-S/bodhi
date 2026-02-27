@@ -21,6 +21,11 @@ const envSchema = z.object({
   // Voyage AI (embeddings)
   VOYAGE_API_KEY: z.string().min(1, "VOYAGE_API_KEY is required"),
 
+  // Notion (optional — enables workspace context)
+  NOTION_API_KEY: z.string().optional(),
+  NOTION_TASKS_DB: z.string().optional(),
+  NOTION_SESSIONS_DB: z.string().optional(),
+
   // Server
   PORT: z.coerce.number().default(3000),
   NODE_ENV: z

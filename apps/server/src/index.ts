@@ -23,6 +23,7 @@ import { getDb } from "@seneca/db";
 import { MemoryService, MemoryExtractor, MemoryContextProvider } from "@seneca/memory";
 import { TelegramBot } from "@seneca/channel-telegram";
 import { Scheduler } from "@seneca/scheduler";
+import { NotionService, NotionContextProvider } from "@seneca/notion";
 import { loadConfig } from "./config.js";
 
 async function main() {
@@ -61,12 +62,34 @@ async function main() {
   const memoryProvider = new MemoryContextProvider(memoryService);
   console.log("  Memory: initialized (Voyage AI embeddings)");
 
-  // 6. Initialize Context Engine
+  // 6. Initialize Notion (optional — workspace context)
+  let notionService: NotionService | null = null;
+  let notionProvider: NotionContextProvider | null = null;
+
+  if (config.NOTION_API_KEY) {
+    notionService = new NotionService({
+      apiKey: config.NOTION_API_KEY,
+      tasksDatabaseId: config.NOTION_TASKS_DB,
+      sessionsDatabaseId: config.NOTION_SESSIONS_DB,
+    });
+    notionProvider = new NotionContextProvider(notionService);
+
+    const connected = await notionService.ping();
+    console.log(`  Notion: ${connected ? "connected" : "FAILED to connect"}`);
+  } else {
+    console.log("  Notion: skipped (no NOTION_API_KEY)");
+  }
+
+  // 7. Initialize Context Engine
   const contextEngine = new ContextEngine();
   contextEngine.register(memoryProvider);
-  console.log("  Context: initialized (1 provider)");
+  if (notionProvider) {
+    contextEngine.register(notionProvider);
+  }
+  const providerCount = 1 + (notionProvider ? 1 : 0);
+  console.log(`  Context: initialized (${providerCount} provider${providerCount > 1 ? "s" : ""})`);
 
-  // 7. Initialize Agent Core (routes through Bridge, not Anthropic API)
+  // 8. Initialize Agent Core (routes through Bridge, not Anthropic API)
   const agent = new Agent(
     {
       persona,
@@ -78,7 +101,7 @@ async function main() {
   );
   console.log("  Agent: initialized (via Bridge → Max subscription)");
 
-  // 8. Initialize Telegram Bot
+  // 9. Initialize Telegram Bot
   const telegramBot = new TelegramBot({
     token: config.TELEGRAM_BOT_TOKEN,
     allowedUserId: config.TELEGRAM_ALLOWED_USER_ID,
@@ -90,13 +113,14 @@ async function main() {
   });
   console.log(`  Telegram: configured (user ${config.TELEGRAM_ALLOWED_USER_ID})`);
 
-  // 9. Initialize Scheduler (proactive briefings via cron)
+  // 10. Initialize Scheduler (proactive briefings via cron)
   const scheduler = new Scheduler({
     agent,
     telegram: telegramBot,
     memoryService,
     contextEngine,
     timezone: "Asia/Ulaanbaatar",
+    notion: notionService,
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings)");
 
@@ -275,12 +299,58 @@ async function main() {
     return c.json(result);
   });
 
+  // API: Notion
+  app.get("/api/notion/status", async (c) => {
+    if (!notionService) {
+      return c.json({ connected: false, reason: "NOTION_API_KEY not configured" });
+    }
+    const connected = await notionService.ping();
+    return c.json({
+      connected,
+      databases: {
+        tasks: config.NOTION_TASKS_DB ? true : false,
+        sessions: config.NOTION_SESSIONS_DB ? true : false,
+      },
+    });
+  });
+
+  app.get("/api/notion/tasks", async (c) => {
+    if (!notionService) {
+      return c.json({ error: "Notion not configured" }, 503);
+    }
+    const filter = (c.req.query("filter") || "active") as "all" | "active" | "todo";
+    const tasks = await notionService.getTasks(filter);
+    return c.json({ tasks });
+  });
+
+  app.get("/api/notion/sessions", async (c) => {
+    if (!notionService) {
+      return c.json({ error: "Notion not configured" }, 503);
+    }
+    const limit = parseInt(c.req.query("limit") || "10");
+    const sessions = await notionService.getSessions(limit);
+    return c.json({ sessions });
+  });
+
+  app.get("/api/notion/search", async (c) => {
+    if (!notionService) {
+      return c.json({ error: "Notion not configured" }, 503);
+    }
+    const q = c.req.query("q");
+    if (!q) {
+      return c.json({ error: "q query parameter is required" }, 400);
+    }
+    const results = await notionService.search(q);
+    return c.json({ results });
+  });
+
   // API: Status
   app.get("/api/status", (c) => {
     return c.json({
       agent: "online",
       bridge: bridge.isRunning ? "running" : "idle",
       memory: "active",
+      notion: notionService ? "connected" : "not configured",
       scheduler: scheduler.getStatus().running ? "running" : "stopped",
       uptime: process.uptime(),
       channels: {

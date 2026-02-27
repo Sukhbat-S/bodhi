@@ -14,12 +14,17 @@ interface TelegramSender {
   sendProactiveMessage(text: string): Promise<void>;
 }
 
+interface NotionDataSource {
+  getBriefingSummary(): Promise<string>;
+}
+
 export interface SchedulerConfig {
   agent: Agent;
   telegram: TelegramSender;
   memoryService: MemoryService;
   contextEngine: ContextEngine;
   timezone: string; // e.g. "Asia/Ulaanbaatar"
+  notion?: NotionDataSource | null;
 }
 
 interface JobRecord {
@@ -200,6 +205,19 @@ export class Scheduler {
         })
         .join("\n");
 
+      // Optionally fetch Notion context (tasks, sessions)
+      let notionSection = "";
+      if (this.config.notion) {
+        try {
+          const notionSummary = await this.config.notion.getBriefingSummary();
+          if (notionSummary) {
+            notionSection = `\n\n## Notion Workspace\n\n${notionSummary}`;
+          }
+        } catch (err) {
+          console.error("[scheduler] Notion data fetch failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
       const prompt = `${PROMPTS[type]}
 
 ## Recent Memories (${recentMemories.length} items)
@@ -209,7 +227,7 @@ ${memoriesText}
 ## Stats
 - Total memories: ${stats.totalMemories}
 - New in last 24h: ${stats.recentCount}
-- Top tags: ${stats.topTags.map((t) => `${t.tag}(${t.count})`).join(", ") || "none"}
+- Top tags: ${stats.topTags.map((t) => `${t.tag}(${t.count})`).join(", ") || "none"}${notionSection}
 
 Generate the ${type} briefing now.`;
 

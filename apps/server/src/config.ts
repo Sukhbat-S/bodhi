@@ -1,13 +1,13 @@
 // ============================================================
-// SENECA — Server Configuration
+// BODHI — Server Configuration
 // Validates environment variables at startup
 // ============================================================
 
 import { z } from "zod";
 
 const envSchema = z.object({
-  // Anthropic
-  ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required"),
+  // Anthropic (optional — reasoning now routes through Claude Code CLI / Max subscription)
+  ANTHROPIC_API_KEY: z.string().optional(),
 
   // Telegram
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
@@ -16,7 +16,10 @@ const envSchema = z.object({
     .min(1, "TELEGRAM_ALLOWED_USER_ID is required"),
 
   // Database
-  DATABASE_URL: z.string().url("DATABASE_URL must be a valid URL").optional(),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+
+  // Voyage AI (embeddings)
+  VOYAGE_API_KEY: z.string().min(1, "VOYAGE_API_KEY is required"),
 
   // Server
   PORT: z.coerce.number().default(3000),
@@ -41,5 +44,5 @@ export function loadConfig(): Config {
     process.exit(1);
   }
 
-  return result.data;
+  return result.data!;
 }

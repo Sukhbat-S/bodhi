@@ -1,5 +1,5 @@
 // ============================================================
-// SENECA — Bridge Safety Layer
+// BODHI — Bridge Safety Layer
 // Budget caps, tool allowlists, and confirmation logic
 // ============================================================
 

@@ -1,5 +1,5 @@
 // ============================================================
-// SENECA — Core Type Definitions
+// BODHI — Core Type Definitions
 // ============================================================
 
 export type Channel = "telegram" | "web" | "cli";
@@ -117,6 +117,22 @@ export interface BridgeOptions {
   maxBudgetUsd?: number;
   permissionMode?: "default" | "acceptEdits" | "plan" | "bypassPermissions";
   model?: "opus" | "sonnet";
+  // Chat-mode options (for routing reasoning through Claude Code CLI)
+  systemPrompt?: string;
+  tools?: string; // "" to disable all built-in tools
+  sessionId?: string;
+  resume?: string;
+  noSessionPersistence?: boolean;
+}
+
+// --- AI Backend (abstraction for Agent/Extractor to use Bridge) ---
+
+export interface AIBackend {
+  execute(
+    prompt: string,
+    options: Partial<BridgeOptions>,
+    onProgress?: (update: { type: string; content: string }) => void
+  ): Promise<BridgeTask>;
 }
 
 // --- Agent Config ---

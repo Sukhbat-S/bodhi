@@ -8,11 +8,12 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "node --run dev --workspace=@seneca/server",
+    "dev": "npm run dev --workspace=@seneca/server",
     "build": "npm run build --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present"
   },
   "devDependencies": {
+    "@types/node": "^25.3.2",
     "typescript": "^5.7.0"
   }
 }

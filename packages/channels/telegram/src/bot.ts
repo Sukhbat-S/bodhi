@@ -1,11 +1,11 @@
 // ============================================================
-// SENECA — Telegram Bot (Telegraf)
-// Primary mobile interface for SENECA
+// BODHI — Telegram Bot (Telegraf)
+// Primary mobile interface for BODHI
 // ============================================================
 
 import { Telegraf, type Context } from "telegraf";
 import { message } from "telegraf/filters";
-import type { Agent, UnifiedMessage, AgentResponse } from "@seneca/core";
+import type { Agent, ContextEngine } from "@seneca/core";
 import {
   Bridge,
   resolveProject,
@@ -13,12 +13,16 @@ import {
   requiresConfirmation,
   type BridgeProgressCallback,
 } from "@seneca/bridge";
+import type { MemoryService, MemoryExtractor } from "@seneca/memory";
 
 interface BotConfig {
   token: string;
   allowedUserId: string;
   agent: Agent;
   bridge: Bridge;
+  contextEngine: ContextEngine;
+  memoryService: MemoryService;
+  memoryExtractor: MemoryExtractor;
 }
 
 export class TelegramBot {
@@ -26,12 +30,18 @@ export class TelegramBot {
   private agent: Agent;
   private bridge: Bridge;
   private allowedUserId: string;
+  private contextEngine: ContextEngine;
+  private memoryService: MemoryService;
+  private memoryExtractor: MemoryExtractor;
 
   constructor(config: BotConfig) {
     this.bot = new Telegraf(config.token);
     this.agent = config.agent;
     this.bridge = config.bridge;
     this.allowedUserId = config.allowedUserId;
+    this.contextEngine = config.contextEngine;
+    this.memoryService = config.memoryService;
+    this.memoryExtractor = config.memoryExtractor;
 
     this.setupMiddleware();
     this.setupCommands();
@@ -52,10 +62,12 @@ export class TelegramBot {
   private setupCommands() {
     this.bot.command("start", (ctx) => {
       ctx.reply(
-        "SENECA is online.\n\n" +
+        "BODHI is online.\n\n" +
           "Commands:\n" +
           "/code <task> — Run Claude Code on your Mac\n" +
-          "/ask <question> — Ask SENECA anything\n" +
+          "/ask <question> — Ask BODHI anything\n" +
+          "/remember <text> — Save a memory\n" +
+          "/recall <query> — Search memories\n" +
           "/status — Check system status\n" +
           "/projects — List registered projects\n" +
           "/help — Show this message"
@@ -66,7 +78,9 @@ export class TelegramBot {
       ctx.reply(
         "/code <project> <task> — Remote-control Claude Code\n" +
           "  Example: /code jewelry-platform fix the cart bug\n\n" +
-          "/ask <question> — Ask SENECA (life, strategy, ideas)\n\n" +
+          "/ask <question> — Ask BODHI (life, strategy, ideas)\n\n" +
+          "/remember <text> — Store something in memory\n" +
+          "/recall <query> — Search your memories\n\n" +
           "/status — System status\n" +
           "/projects — List projects"
       );
@@ -113,16 +127,15 @@ export class TelegramBot {
       // Safety check
       if (requiresConfirmation(prompt)) {
         return ctx.reply(
-          "⚠️ This task contains potentially destructive operations.\n\n" +
+          "This task contains potentially destructive operations.\n\n" +
             `Task: ${prompt}\n\n` +
-            "Send /confirm to proceed, or modify your request.",
-          { parse_mode: "Markdown" }
+            "Send /confirm to proceed, or modify your request."
         );
       }
 
       // Send initial status message
       const statusMsg = await ctx.reply(
-        `🔧 Running Claude Code...\n📁 ${options.cwd}\n\nTask: ${prompt}`
+        `Running Claude Code...\n${options.cwd}\n\nTask: ${prompt}`
       );
 
       // Track progress for streaming updates
@@ -139,10 +152,10 @@ export class TelegramBot {
 
         const statusEmoji =
           update.type === "error"
-            ? "❌"
+            ? "Error"
             : update.type === "result"
-              ? "✅"
-              : "⏳";
+              ? "Done"
+              : "Working";
 
         // Truncate for Telegram (4096 char limit)
         const displayText = truncate(progressText, 3500);
@@ -152,7 +165,7 @@ export class TelegramBot {
             ctx.chat.id,
             statusMsg.message_id,
             undefined,
-            `${statusEmoji} Claude Code\n📁 ${options.cwd}\n\n${displayText}`
+            `${statusEmoji} — Claude Code\n${options.cwd}\n\n${displayText}`
           );
         } catch {
           // Edit might fail if content hasn't changed
@@ -164,7 +177,7 @@ export class TelegramBot {
 
       // Send final result
       const resultText = task.result || task.error || "No output.";
-      const finalEmoji = task.status === "completed" ? "✅" : "❌";
+      const finalStatus = task.status === "completed" ? "Done" : "Failed";
       const duration = task.completedAt
         ? Math.round(
             (task.completedAt.getTime() - task.startedAt.getTime()) / 1000
@@ -176,20 +189,20 @@ export class TelegramBot {
           ctx.chat.id,
           statusMsg.message_id,
           undefined,
-          `${finalEmoji} Claude Code — ${task.status}\n` +
-            `📁 ${options.cwd}\n` +
-            `⏱ ${duration}s\n\n` +
+          `${finalStatus} — Claude Code\n` +
+            `${options.cwd}\n` +
+            `${duration}s\n\n` +
             truncate(resultText, 3500)
         );
       } catch {
         // Fallback: send as new message
         await ctx.reply(
-          `${finalEmoji} Claude Code — ${task.status}\n\n${truncate(resultText, 3500)}`
+          `${finalStatus} — Claude Code\n\n${truncate(resultText, 3500)}`
         );
       }
     });
 
-    // /ask — Chat with SENECA directly
+    // /ask — Chat with BODHI directly
     this.bot.command("ask", async (ctx) => {
       const question = ctx.message.text.replace(/^\/ask\s*/, "").trim();
       if (!question) {
@@ -199,13 +212,61 @@ export class TelegramBot {
       await this.handleChat(ctx, question);
     });
 
+    // /remember — Manually store a memory
+    this.bot.command("remember", async (ctx) => {
+      const text = ctx.message.text.replace(/^\/remember\s*/, "").trim();
+      if (!text) {
+        return ctx.reply("Usage: /remember <something to remember>");
+      }
+
+      try {
+        await this.memoryService.store({
+          content: text,
+          type: "fact",
+          source: "manual",
+          importance: 0.8,
+        });
+        ctx.reply(`Remembered: "${truncate(text, 100)}"`);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        ctx.reply(`Failed to store memory: ${msg}`);
+      }
+    });
+
+    // /recall — Search memories
+    this.bot.command("recall", async (ctx) => {
+      const query = ctx.message.text.replace(/^\/recall\s*/, "").trim();
+      if (!query) {
+        return ctx.reply("Usage: /recall <search query>");
+      }
+
+      try {
+        const memories = await this.memoryService.retrieve(query, 5);
+
+        if (memories.length === 0) {
+          return ctx.reply("No memories found.");
+        }
+
+        const lines = memories.map((m, i) => {
+          const age = formatAge(m.createdAt);
+          return `${i + 1}. [${m.type}] ${m.content}\n   (${age}, ${(m.similarity * 100).toFixed(0)}% match)`;
+        });
+
+        ctx.reply(`Memories matching "${truncate(query, 30)}":\n\n${lines.join("\n\n")}`);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        ctx.reply(`Memory search failed: ${msg}`);
+      }
+    });
+
     // /status — System status
     this.bot.command("status", (ctx) => {
       const bridgeRunning = this.bridge.isRunning;
       ctx.reply(
-        `SENECA Status\n\n` +
+        `BODHI Status\n\n` +
           `Agent: online\n` +
           `Bridge: ${bridgeRunning ? "task running" : "idle"}\n` +
+          `Memory: active\n` +
           `Channel: Telegram`
       );
     });
@@ -220,7 +281,7 @@ export class TelegramBot {
       }
 
       const list = projects
-        .map((p) => `• ${p.name}\n  ${p.path}`)
+        .map((p) => `${p.name}\n  ${p.path}`)
         .join("\n\n");
 
       ctx.reply(`Registered Projects:\n\n${list}`);
@@ -228,7 +289,7 @@ export class TelegramBot {
   }
 
   private setupMessageHandler() {
-    // Handle plain messages (no command) as chat with SENECA
+    // Handle plain messages (no command) as chat with BODHI
     this.bot.on(message("text"), async (ctx) => {
       const text = ctx.message.text;
 
@@ -243,20 +304,23 @@ export class TelegramBot {
         });
       }
 
-      // Otherwise, chat with SENECA
+      // Otherwise, chat with BODHI
       await this.handleChat(ctx, text);
     });
   }
 
   private async handleChat(ctx: Context, message: string) {
-    const statusMsg = await ctx.reply("Thinking...");
+    const statusMsg = await ctx.reply("...");
 
     try {
+      // Retrieve relevant context (memories)
+      const context = await this.contextEngine.gather(message);
+
       let accumulated = "";
 
       const response = await this.agent.stream(
         message,
-        undefined,
+        context,
         (chunk) => {
           accumulated += chunk;
         }
@@ -286,6 +350,11 @@ export class TelegramBot {
           await ctx.reply(displayText);
         }
       }
+
+      // Extract memories from this conversation (fire-and-forget)
+      this.memoryExtractor
+        .extract(message, response.content)
+        .catch(() => {});
     } catch (error) {
       const errMsg =
         error instanceof Error ? error.message : "Unknown error";
@@ -309,7 +378,7 @@ export class TelegramBot {
   }
 
   async stop() {
-    this.bot.stop("SENECA shutdown");
+    this.bot.stop("BODHI shutdown");
   }
 
   getBot() {
@@ -320,4 +389,17 @@ export class TelegramBot {
 function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength) + "\n\n... (truncated)";
+}
+
+function formatAge(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return `${Math.floor(diffDays / 30)}mo ago`;
 }

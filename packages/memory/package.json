@@ -1,5 +1,5 @@
 {
-  "name": "@seneca/channel-telegram",
+  "name": "@seneca/memory",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,9 +11,8 @@
   },
   "dependencies": {
     "@seneca/core": "*",
-    "@seneca/bridge": "*",
-    "@seneca/memory": "*",
-    "telegraf": "^4.16.0"
+    "@seneca/db": "*",
+    "drizzle-orm": "^0.38.0"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

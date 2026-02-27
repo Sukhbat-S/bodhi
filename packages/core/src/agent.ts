@@ -1,16 +1,16 @@
 // ============================================================
-// SENECA — Agent Core
-// Wraps Anthropic SDK for SENECA's own reasoning (non-code tasks)
+// BODHI — Agent Core
+// Routes reasoning through Claude Code CLI (Bridge) via AIBackend
+// Uses Max subscription — $0 cost per message
 // ============================================================
 
-import Anthropic from "@anthropic-ai/sdk";
 import type {
   AgentConfig,
   AgentResponse,
+  AIBackend,
   ContextSnapshot,
   ModelId,
   TokenUsage,
-  ToolCallRecord,
 } from "./types.js";
 
 const DEFAULT_CONFIG: AgentConfig = {
@@ -26,13 +26,16 @@ interface ConversationMessage {
 }
 
 export class Agent {
-  private client: Anthropic;
+  private backend: AIBackend;
   private config: AgentConfig;
   private conversationHistory: ConversationMessage[] = [];
 
-  constructor(config: Partial<AgentConfig> & { persona: string }) {
+  constructor(
+    config: Partial<AgentConfig> & { persona: string },
+    backend: AIBackend
+  ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.client = new Anthropic();
+    this.backend = backend;
   }
 
   async chat(
@@ -43,50 +46,36 @@ export class Agent {
 
     this.conversationHistory.push({ role: "user", content: userMessage });
 
-    const systemPrompt = this.buildSystemPrompt(context);
+    const fullPrompt = this.buildFullPrompt(userMessage, context);
 
-    const response = await this.client.messages.create({
-      model: this.config.model,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: this.conversationHistory.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      })),
+    console.log("[agent] Sending chat to Bridge...");
+
+    const task = await this.backend.execute(fullPrompt, {
+      model: this.config.model.includes("opus") ? "opus" : "sonnet",
+      tools: "",  // Disable all tools — pure chat mode
+      noSessionPersistence: true,
     });
 
-    const assistantContent =
-      response.content[0].type === "text" ? response.content[0].text : "";
+    console.log(`[agent] Bridge returned: status=${task.status}, result length=${task.result?.length || 0}, error=${task.error || "none"}`);
+
+    // Use result, or error message, or fallback
+    const assistantContent = task.result || task.error || "I couldn't generate a response.";
 
     this.conversationHistory.push({
       role: "assistant",
       content: assistantContent,
     });
 
-    // Keep conversation window manageable (last 40 messages)
     if (this.conversationHistory.length > 40) {
       this.conversationHistory = this.conversationHistory.slice(-40);
     }
 
-    const tokenUsage: TokenUsage = {
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
-      cacheReadTokens:
-        "cache_read_input_tokens" in response.usage
-          ? (response.usage.cache_read_input_tokens as number)
-          : undefined,
-      cacheWriteTokens:
-        "cache_creation_input_tokens" in response.usage
-          ? (response.usage.cache_creation_input_tokens as number)
-          : undefined,
-    };
-
     return {
-      id: response.id,
+      id: task.id,
       threadId: "",
       content: assistantContent,
       model: this.config.model,
-      tokenUsage,
+      tokenUsage: { inputTokens: 0, outputTokens: 0 },
       durationMs: Date.now() - startTime,
     };
   }
@@ -100,26 +89,28 @@ export class Agent {
 
     this.conversationHistory.push({ role: "user", content: userMessage });
 
-    const systemPrompt = this.buildSystemPrompt(context);
+    const fullPrompt = this.buildFullPrompt(userMessage, context);
 
-    const stream = this.client.messages.stream({
-      model: this.config.model,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: this.conversationHistory.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      })),
-    });
+    console.log("[agent] Sending stream to Bridge...");
 
-    let fullText = "";
+    const task = await this.backend.execute(
+      fullPrompt,
+      {
+        model: this.config.model.includes("opus") ? "opus" : "sonnet",
+        tools: "",  // Disable all tools — pure chat mode
+        noSessionPersistence: true,
+      },
+      (update) => {
+        if (update.type === "progress" && onChunk) {
+          onChunk(update.content);
+        }
+      }
+    );
 
-    stream.on("text", (text) => {
-      fullText += text;
-      onChunk?.(text);
-    });
+    console.log(`[agent] Bridge returned: status=${task.status}, result length=${task.result?.length || 0}, error=${task.error || "none"}`);
 
-    const finalMessage = await stream.finalMessage();
+    // Use result, or error message, or fallback
+    const fullText = task.result || task.error || "I couldn't generate a response.";
 
     this.conversationHistory.push({ role: "assistant", content: fullText });
 
@@ -127,17 +118,12 @@ export class Agent {
       this.conversationHistory = this.conversationHistory.slice(-40);
     }
 
-    const tokenUsage: TokenUsage = {
-      inputTokens: finalMessage.usage.input_tokens,
-      outputTokens: finalMessage.usage.output_tokens,
-    };
-
     return {
-      id: finalMessage.id,
+      id: task.id,
       threadId: "",
       content: fullText,
       model: this.config.model,
-      tokenUsage,
+      tokenUsage: { inputTokens: 0, outputTokens: 0 },
       durationMs: Date.now() - startTime,
     };
   }
@@ -150,8 +136,17 @@ export class Agent {
     this.conversationHistory = [];
   }
 
-  private buildSystemPrompt(context?: ContextSnapshot): string {
-    let prompt = this.config.persona;
+  /**
+   * Build the full prompt with persona, context, history, and user message
+   * all embedded directly in the -p prompt. This is the most robust approach
+   * since it doesn't rely on --system-prompt or --tools flags.
+   */
+  private buildFullPrompt(
+    userMessage: string,
+    context?: ContextSnapshot
+  ): string {
+    let prompt = "<system>\n";
+    prompt += this.config.persona;
 
     if (context && context.fragments.length > 0) {
       prompt += "\n\n---\n\n## Current Context\n\n";
@@ -159,6 +154,21 @@ export class Agent {
         prompt += `### ${fragment.provider}\n${fragment.content}\n\n`;
       }
     }
+
+    prompt += "\n\nIMPORTANT: You are in a conversational chat. Respond directly to the user. Do NOT use any tools. Do NOT try to read, write, or edit any files. Just respond with text.\n";
+    prompt += "</system>\n\n";
+
+    // Add conversation history
+    const historyMessages = this.conversationHistory.slice(0, -1);
+    if (historyMessages.length > 0) {
+      prompt += "<conversation_history>\n";
+      for (const msg of historyMessages) {
+        prompt += `<${msg.role}>${msg.content}</${msg.role}>\n`;
+      }
+      prompt += "</conversation_history>\n\n";
+    }
+
+    prompt += userMessage;
 
     return prompt;
   }

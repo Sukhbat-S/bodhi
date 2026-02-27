@@ -1,5 +1,5 @@
 // ============================================================
-// SENECA — Conversation Schema (Drizzle ORM)
+// BODHI — Conversation Schema (Drizzle ORM)
 // ============================================================
 
 import {

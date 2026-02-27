@@ -1,5 +1,5 @@
 // ============================================================
-// SENECA — System Prompt Builder
+// BODHI — System Prompt Builder
 // Dynamically composes the system prompt from persona + context
 // ============================================================
 
@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ContextSnapshot } from "./types.js";
 
-let cachedPersona: string | null = null;
+let cachedPersona: string | undefined;
 
 export function loadPersona(personaPath: string): string {
   if (cachedPersona) return cachedPersona;
@@ -16,7 +16,7 @@ export function loadPersona(personaPath: string): string {
 }
 
 export function clearPersonaCache(): void {
-  cachedPersona = null;
+  cachedPersona = undefined;
 }
 
 export function buildSystemPrompt(

@@ -1,5 +1,5 @@
 // ============================================================
-// SENECA — Database Client (Drizzle + PostgreSQL)
+// BODHI — Database Client (Drizzle + PostgreSQL)
 // ============================================================
 
 import { drizzle } from "drizzle-orm/postgres-js";

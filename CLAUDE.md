@@ -42,6 +42,8 @@ apps/
 - **Context providers**: memory=priority 10, notion=8, gmail/calendar=7. Keyword-based relevance.
 - **Briefing prompts**: must explicitly instruct the agent to include each data section, or it may ignore context
 - **Google OAuth tokens**: stored in `.google-token.json` (gitignored), auto-refreshes
+- **Conversation history**: Agent has no DB dependency — server passes `history` array to `chat()`/`stream()`. Telegram still uses Agent's internal in-memory history.
+- **ConversationService**: lives in `apps/server/src/services/conversation.ts`, uses Drizzle schema directly
 
 ## Dev Workflow
 
@@ -73,8 +75,8 @@ PORT=4000
 |-------|--------|---------|
 | `/` | GET | Health check |
 | `/api/status` | GET | Service status |
-| `/api/chat` | POST | Chat (non-streaming) |
-| `/api/chat/stream` | POST | SSE streaming chat |
+| `/api/chat` | POST | Chat (non-streaming, accepts threadId) |
+| `/api/chat/stream` | POST | SSE streaming chat (accepts threadId) |
 | `/api/code` | POST | Bridge direct execution |
 | `/api/memories` | GET | List memories (paginated, filterable) |
 | `/api/memories` | POST | Create memory |
@@ -93,6 +95,9 @@ PORT=4000
 | `/api/calendar/today` | GET | Today's events |
 | `/api/calendar/upcoming` | GET | Next N days events |
 | `/api/calendar/free` | GET | Free time slots today |
+| `/api/conversations` | GET | List threads (paginated, newest first) |
+| `/api/conversations/:id` | GET | Get thread with all turns |
+| `/api/conversations/:id` | DELETE | Delete thread (cascade) |
 
 ## Claude Code Infrastructure
 
@@ -142,3 +147,4 @@ npm run build -w @seneca/scheduler  # build single package
 4. Scheduler — Proactive briefings via cron → Telegram ✅
 5. Notion — Workspace tasks & sessions context ✅
 6. Google — Gmail + Calendar (OAuth2, read-only) ✅
+7. Conversations — Thread persistence + dashboard history panel ✅

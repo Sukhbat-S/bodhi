@@ -5,6 +5,8 @@
 
 import { Telegraf, type Context } from "telegraf";
 import { message } from "telegraf/filters";
+import { writeFile, unlink, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import Groq from "groq-sdk";
 import type { Agent, ContextEngine } from "@seneca/core";
 import {
@@ -426,13 +428,38 @@ export class TelegramBot {
       await this.handleChat(ctx, text);
     });
 
-    // Handle photo messages (with optional caption) as chat with BODHI
+    // Handle photo messages — download image and let Claude see it via Read tool
     this.bot.on(message("photo"), async (ctx) => {
       const caption = ctx.message.caption || "";
-      const text = caption
-        ? `[User sent a photo with caption: ${caption}]`
-        : "[User sent a photo]";
-      await this.handleChat(ctx, text);
+      const text = caption || "What do you see in this image?";
+
+      // Download the largest photo size (last in Telegram's array)
+      const photo = ctx.message.photo[ctx.message.photo.length - 1];
+      let imagePath: string | undefined;
+
+      try {
+        const fileLink = await ctx.telegram.getFileLink(photo.file_id);
+        const response = await fetch(fileLink.href);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        // Save inside project directory so Claude Code's Read tool has permission
+        const tmpDir = join(process.cwd(), ".tmp");
+        await mkdir(tmpDir, { recursive: true });
+        imagePath = join(tmpDir, `bodhi-photo-${Date.now()}.jpg`);
+        await writeFile(imagePath, buffer);
+        console.log(`[telegram] Downloaded photo → ${imagePath} (${buffer.length} bytes)`);
+      } catch (err) {
+        console.error("[telegram] Failed to download photo:", err);
+        // Fall back to text-only mode
+      }
+
+      try {
+        await this.handleChat(ctx, text, imagePath);
+      } finally {
+        // Clean up temp file after bridge is done
+        if (imagePath) {
+          unlink(imagePath).catch(() => {});
+        }
+      }
     });
 
     // Handle document/file messages (with optional caption)
@@ -481,8 +508,8 @@ export class TelegramBot {
     return transcription.text;
   }
 
-  private async handleChat(ctx: Context, message: string) {
-    const statusMsg = await ctx.reply("...");
+  private async handleChat(ctx: Context, message: string, imagePath?: string) {
+    const statusMsg = await ctx.reply(imagePath ? "Viewing image..." : "...");
 
     try {
       // Retrieve relevant context (memories)
@@ -495,7 +522,9 @@ export class TelegramBot {
         context,
         (chunk) => {
           accumulated += chunk;
-        }
+        },
+        undefined, // history — use internal
+        imagePath
       );
 
       // Send final response

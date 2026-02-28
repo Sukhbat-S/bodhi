@@ -90,7 +90,8 @@ export class Agent {
     userMessage: string,
     context?: ContextSnapshot,
     onChunk?: (text: string) => void,
-    history?: ConversationMessage[]
+    history?: ConversationMessage[],
+    imagePath?: string
   ): Promise<AgentResponse> {
     const startTime = Date.now();
 
@@ -98,15 +99,16 @@ export class Agent {
       this.conversationHistory.push({ role: "user", content: userMessage });
     }
 
-    const fullPrompt = this.buildFullPrompt(userMessage, context, history);
+    const fullPrompt = this.buildFullPrompt(userMessage, context, history, imagePath);
 
-    console.log("[agent] Sending stream to Bridge...");
+    console.log(`[agent] Sending stream to Bridge...${imagePath ? ` (with image: ${imagePath})` : ""}`);
 
     const task = await this.backend.execute(
       fullPrompt,
       {
         model: this.config.model.includes("opus") ? "opus" : "sonnet",
-        tools: "",  // Disable all tools — pure chat mode
+        // Enable Read tool when image is present so Claude can view the file
+        tools: imagePath ? "Read" : "",
         noSessionPersistence: true,
       },
       (update) => {
@@ -155,7 +157,8 @@ export class Agent {
   private buildFullPrompt(
     userMessage: string,
     context?: ContextSnapshot,
-    history?: ConversationMessage[]
+    history?: ConversationMessage[],
+    imagePath?: string
   ): string {
     let prompt = "<system>\n";
     prompt += this.config.persona;
@@ -167,7 +170,12 @@ export class Agent {
       }
     }
 
-    prompt += "\n\nIMPORTANT: You are in a conversational chat. Respond directly to the user. Do NOT use any tools. Do NOT try to read, write, or edit any files. Just respond with text.\n";
+    if (imagePath) {
+      // Image mode: enable Read tool to view the image file
+      prompt += `\n\nThe user sent an image. FIRST, use the Read tool to view the file at "${imagePath}". Then respond about what you see. You may ONLY use the Read tool — do not use any other tools. After viewing the image, respond conversationally.\n`;
+    } else {
+      prompt += "\n\nIMPORTANT: You are in a conversational chat. Respond directly to the user. Do NOT use any tools. Do NOT try to read, write, or edit any files. Just respond with text.\n";
+    }
     prompt += "</system>\n\n";
 
     // Use external history if provided, otherwise use internal (minus the latest user message)

@@ -31,6 +31,7 @@ import {
   GmailContextProvider,
   CalendarContextProvider,
 } from "@seneca/google";
+import { ProjectKnowledgeProvider } from "@seneca/knowledge";
 import { loadConfig } from "./config.js";
 import { ConversationService } from "./services/conversation.js";
 
@@ -128,6 +129,11 @@ async function main() {
   // 7. Initialize Context Engine
   const contextEngine = new ContextEngine();
   contextEngine.register(memoryProvider);
+
+  // Project Knowledge — reads CLAUDE.md + MEMORY.md from configured projects
+  const knowledgeProvider = new ProjectKnowledgeProvider();
+  contextEngine.register(knowledgeProvider);
+
   if (notionProvider) {
     contextEngine.register(notionProvider);
   }
@@ -137,8 +143,8 @@ async function main() {
   if (calendarProvider) {
     contextEngine.register(calendarProvider);
   }
-  const providerCount = 1 + (notionProvider ? 1 : 0) + (gmailProvider ? 1 : 0) + (calendarProvider ? 1 : 0);
-  console.log(`  Context: initialized (${providerCount} provider${providerCount > 1 ? "s" : ""})`);
+  const providerCount = 2 + (notionProvider ? 1 : 0) + (gmailProvider ? 1 : 0) + (calendarProvider ? 1 : 0);
+  console.log(`  Context: initialized (${providerCount} provider${providerCount > 1 ? "s" : ""}, includes project knowledge)`);
 
   // 8. Initialize Agent Core (routes through Bridge, not Anthropic API)
   const agent = new Agent(

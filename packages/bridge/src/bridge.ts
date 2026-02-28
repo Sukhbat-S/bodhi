@@ -16,7 +16,7 @@ const DEFAULT_OPTIONS: Required<
   cwd: process.cwd(),
   allowedTools: ["Read", "Edit", "Bash", "Grep", "Glob", "Write"],
   maxTurns: 10,
-  maxBudgetUsd: 3,
+  maxBudgetUsd: 0,
   permissionMode: "acceptEdits",
   model: "sonnet",
 };
@@ -108,12 +108,15 @@ export class Bridge {
     onChunk: (chunk: string) => void
   ): Promise<string> {
     return new Promise((resolve, reject) => {
+      // Pass prompt via stdin instead of as a -p argument.
+      // The CLI arg approach breaks with large prompts containing
+      // XML-like tags, markdown tables, pipes, and special chars.
+      // `-p` without a value reads from stdin ("useful for pipes").
       const args: string[] = [
         "-p",
-        prompt,
         "--output-format",
         "stream-json",
-        "--verbose", // Required for stream-json with -p (print mode)
+        "--verbose",
       ];
 
       // Permission mode
@@ -132,11 +135,12 @@ export class Bridge {
       }
 
       // Tools: "" disables all, "default" uses all, or specific names
-      if (opts.tools !== undefined) {
+      if (opts.tools !== undefined && opts.tools !== "") {
         args.push("--tools", opts.tools);
-      } else if (opts.allowedTools && opts.allowedTools.length > 0) {
+      } else if (opts.tools !== "" && opts.allowedTools && opts.allowedTools.length > 0) {
         args.push("--allowed-tools", opts.allowedTools.join(" "));
       }
+      // When tools === "", we skip --tools entirely; the prompt instructs no tool use
 
       // Budget cap (only for API key users)
       if (opts.maxBudgetUsd && opts.maxBudgetUsd > 0) {
@@ -156,10 +160,32 @@ export class Bridge {
         args.push("--no-session-persistence");
       }
 
-      // Strip CLAUDECODE env var to allow spawning Claude Code from within
-      // another Claude Code session (e.g., when BODHI is managed by Claude Code)
+      // Strip ALL Claude-related env vars to prevent interference.
+      // When BODHI runs inside Claude Code Desktop (or a terminal launched by it),
+      // the parent process sets 7+ env vars (CLAUDE_CODE_OAUTH_TOKEN,
+      // CLAUDE_AGENT_SDK_VERSION, CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES, etc.)
+      // that cause the spawned `claude` CLI to think it's nested inside another
+      // session — leading to exit code 1 with empty stderr.
       const cleanEnv = { ...process.env };
-      delete cleanEnv.CLAUDECODE;
+      const strippedVars: string[] = [];
+      for (const key of Object.keys(cleanEnv)) {
+        if (
+          key === "CLAUDECODE" ||
+          key.startsWith("CLAUDE_") ||
+          (key === "__CFBundleIdentifier" &&
+            cleanEnv[key]?.includes("claude"))
+        ) {
+          strippedVars.push(key);
+          delete cleanEnv[key];
+        }
+      }
+      if (strippedVars.length > 0) {
+        console.log(
+          `[bridge] Stripped ${strippedVars.length} CLAUDE env vars: ${strippedVars.join(", ")}`
+        );
+      }
+
+      console.log(`[bridge] Running: claude ${args.map(a => a.includes(" ") ? `"${a}"` : a).join(" ")} (prompt via stdin, ${prompt.length} chars)`);
 
       const proc = spawn("claude", args, {
         cwd: opts.cwd || process.cwd(),
@@ -167,8 +193,9 @@ export class Bridge {
         stdio: ["pipe", "pipe", "pipe"],
       });
 
-      // Close stdin immediately — claude -p doesn't need stdin input
-      // Without this, Claude Code hangs waiting for stdin to close
+      // Pipe prompt via stdin then close — keeps the arg list small
+      // and avoids issues with special characters in the prompt text
+      proc.stdin.write(prompt);
       proc.stdin.end();
 
       const taskId = crypto.randomUUID();
@@ -212,17 +239,23 @@ export class Bridge {
         }
       });
 
+      let stderrBuffer = "";
       proc.stderr.on("data", (data: Buffer) => {
         const text = data.toString().trim();
         if (text) {
+          stderrBuffer += text + "\n";
           // Don't forward verbose debug noise to the caller
           if (!text.startsWith("Debug:") && !text.startsWith("Trace:")) {
+            console.error(`[bridge/stderr] ${text}`);
             onChunk(`[stderr] ${text}`);
           }
         }
       });
 
       proc.on("close", (code) => {
+        if (code !== 0) {
+          console.error(`[bridge] Exited with code ${code}. Full stderr:\n${stderrBuffer}`);
+        }
         this.activeTasks.delete(taskId);
         if (code === 0) {
           resolve(fullOutput || lastAssistantText || "Task completed.");

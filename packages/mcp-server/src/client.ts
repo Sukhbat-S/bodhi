@@ -132,6 +132,118 @@ export async function getMemoryStats(): Promise<string> {
 }
 
 // --------------------------------------------------
+// Session Summary (batch store)
+// --------------------------------------------------
+
+export async function storeSessionSummary(input: {
+  project: string;
+  completed: string[];
+  pending: string[];
+  memories: Array<{
+    content: string;
+    type: string;
+    importance: number;
+    tags?: string[];
+  }>;
+  sessionNote?: string;
+}): Promise<string> {
+  const { project, completed, pending, memories, sessionNote } = input;
+
+  // Build session summary event
+  const summaryParts = [`Session summary (${project})`];
+  if (completed.length > 0)
+    summaryParts.push(`Completed: ${completed.join("; ")}`);
+  if (pending.length > 0)
+    summaryParts.push(`Pending: ${pending.join("; ")}`);
+  if (sessionNote) summaryParts.push(sessionNote);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const allMemories = [
+    ...memories.map((m) => ({
+      ...m,
+      tags: [...(m.tags || []), project],
+    })),
+    {
+      content: summaryParts.join(". "),
+      type: "event",
+      importance: 0.8,
+      tags: [project, "session-summary", today],
+    },
+  ];
+
+  const result = await bodhiFetch<{ stored: number; ids: string[] }>(
+    "/api/memories/batch",
+    {
+      method: "POST",
+      body: JSON.stringify({ memories: allMemories }),
+    },
+  );
+
+  if (!result.ok) return result.error;
+
+  const typeCount = allMemories.reduce(
+    (acc, m) => {
+      acc[m.type] = (acc[m.type] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  const breakdown = Object.entries(typeCount)
+    .map(([t, c]) => `${c} ${t}${c > 1 ? "s" : ""}`)
+    .join(", ");
+
+  return `Session saved: ${result.data.stored} memories stored (${breakdown}). BODHI will remember this session.`;
+}
+
+// --------------------------------------------------
+// Project Context (filtered by tag)
+// --------------------------------------------------
+
+export async function getProjectContext(
+  project: string,
+  limit = 20,
+): Promise<string> {
+  const result = await bodhiFetch<{
+    memories: Array<{
+      id: string;
+      content: string;
+      type: string;
+      importance: number;
+      createdAt: string;
+      tags: string[] | null;
+    }>;
+    total: number;
+  }>(`/api/memories?tag=${encodeURIComponent(project)}&limit=${limit}`);
+
+  if (!result.ok) return result.error;
+
+  const { memories, total } = result.data;
+  if (memories.length === 0) {
+    return `No memories found tagged with "${project}".`;
+  }
+
+  const grouped: Record<string, string[]> = {};
+  for (const m of memories) {
+    const type = m.type || "fact";
+    if (!grouped[type]) grouped[type] = [];
+    const date = new Date(m.createdAt).toLocaleDateString();
+    grouped[type].push(`- ${m.content} (${date})`);
+  }
+
+  const sections = Object.entries(grouped).map(
+    ([type, items]) =>
+      `## ${type.charAt(0).toUpperCase() + type.slice(1)}s (${items.length})\n${items.join("\n")}`,
+  );
+
+  return [
+    `Project "${project}" — ${total} memories (showing ${memories.length}):`,
+    "",
+    ...sections,
+  ].join("\n");
+}
+
+// --------------------------------------------------
 // Conversations API
 // --------------------------------------------------
 

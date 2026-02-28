@@ -16,6 +16,8 @@ import { z } from "zod";
 import {
   searchMemories,
   storeMemory,
+  storeSessionSummary,
+  getProjectContext,
   getMemoryStats,
   getRecentConversations,
   getTodaysContext,
@@ -71,6 +73,76 @@ server.tool(
   },
   async ({ content, type, importance, tags }) => {
     const result = await storeMemory({ content, type, importance, tags });
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: store_session_summary
+// --------------------------------------------------
+server.tool(
+  "store_session_summary",
+  "Store a complete session summary with multiple memories in one batch. More efficient than calling store_memory multiple times. Use at session end via /session-save.",
+  {
+    project: z.string().describe("Project name (e.g., 'bodhi', 'jewelry')"),
+    completed: z
+      .array(z.string())
+      .describe("List of completed items this session"),
+    pending: z
+      .array(z.string())
+      .describe("List of pending/blocked items for next session"),
+    memories: z
+      .array(
+        z.object({
+          content: z.string().describe("The memory content (self-contained)"),
+          type: z
+            .enum(["fact", "decision", "pattern", "preference", "event"])
+            .describe("Memory type"),
+          importance: z
+            .number()
+            .min(0)
+            .max(1)
+            .describe("Importance 0-1"),
+          tags: z
+            .array(z.string())
+            .optional()
+            .describe("Tags (project tag added automatically)"),
+        }),
+      )
+      .describe("Extracted memories to store"),
+    sessionNote: z
+      .string()
+      .optional()
+      .describe("Optional free-form session note"),
+  },
+  async ({ project, completed, pending, memories, sessionNote }) => {
+    const result = await storeSessionSummary({
+      project,
+      completed,
+      pending,
+      memories,
+      sessionNote,
+    });
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: get_project_context
+// --------------------------------------------------
+server.tool(
+  "get_project_context",
+  "Get all BODHI memories tagged with a specific project. Returns memories grouped by type (facts, decisions, patterns, etc). Useful at session start for loading project context.",
+  {
+    project: z.string().describe("Project name tag (e.g., 'bodhi', 'jewelry')"),
+    limit: z
+      .number()
+      .optional()
+      .default(20)
+      .describe("Max memories to return (default: 20)"),
+  },
+  async ({ project, limit }) => {
+    const result = await getProjectContext(project, limit);
     return { content: [{ type: "text" as const, text: result }] };
   },
 );

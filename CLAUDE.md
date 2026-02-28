@@ -99,6 +99,15 @@ PORT=4000
 | `/api/conversations/:id` | GET | Get thread with all turns |
 | `/api/conversations/:id` | DELETE | Delete thread (cascade) |
 
+## Session Workflow
+
+Every Claude Code session on BODHI should follow this flow:
+
+- **Start**: Run `/session-start` to load context from BODHI's memory (last session, pending items, today's schedule)
+- **During**: Run `/reflect` when you notice patterns, hit breakthroughs, or want to capture insights mid-session
+- **During**: Run `/learn` to explicitly teach BODHI something (technical or personal)
+- **End**: ALWAYS run `/session-save` before ending the session — this is the most important step
+
 ## Claude Code Infrastructure
 
 Slash commands, subagents, hooks, and permissions live in `.claude/`.
@@ -107,6 +116,11 @@ Slash commands, subagents, hooks, and permissions live in `.claude/`.
 
 | Command | Usage | Purpose |
 |---------|-------|---------|
+| `/session-save` | `/session-save` | **End of session**: Extract all learnings, decisions, patterns, and pending items |
+| `/session-start` | `/session-start` | **Start of session**: Load project context, pending items, today's schedule |
+| `/reflect` | `/reflect` | Mid-session checkpoint: capture insights before they're forgotten |
+| `/learn` | `/learn [topic]` | Explicitly teach BODHI something (guided storage) |
+| `/recall` | `/recall [query]` | Quick memory search (e.g., `/recall deployment patterns`) |
 | `/briefing` | `/briefing morning` | Trigger morning/evening/weekly briefing |
 | `/deploy` | `/deploy` | Build all packages, restart server, verify status |
 | `/commit` | `/commit` | Stage + commit with Co-Authored-By trailer |
@@ -148,3 +162,4 @@ npm run build -w @seneca/scheduler  # build single package
 5. Notion — Workspace tasks & sessions context ✅
 6. Google — Gmail + Calendar (OAuth2, read-only) ✅
 7. Conversations — Thread persistence + dashboard history panel ✅
+8. Skills Suite — Session workflow (/session-save, /session-start, /reflect, /learn, /recall) ✅

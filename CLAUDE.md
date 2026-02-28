@@ -12,7 +12,7 @@ npm run dev -w @seneca/dashboard  # Dashboard on :5173
 
 ## Architecture
 
-Monorepo with npm workspaces. 8 packages, all TypeScript ESM.
+Monorepo with npm workspaces. 9 packages, all TypeScript ESM.
 
 ```
 packages/
@@ -20,6 +20,7 @@ packages/
   bridge/       — Claude Code CLI subprocess ($0 via Max subscription)
   db/           — Drizzle ORM + Supabase Postgres (pgvector)
   memory/       — MemoryService + MemoryExtractor + MemoryContextProvider
+  google/       — Gmail + Calendar (shared OAuth2, read-only)
   scheduler/    — node-cron proactive briefings (morning/evening/weekly)
   channels/
     telegram/   — Telegraf bot (single-user, allowedUserId gated)
@@ -45,6 +46,9 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_ALLOWED_USER_ID=
 DATABASE_URL=postgresql://...
 VOYAGE_API_KEY=
+GOOGLE_CLIENT_ID=        # optional — enables Gmail + Calendar
+GOOGLE_CLIENT_SECRET=    # optional
+GOOGLE_REDIRECT_URI=     # optional (defaults to localhost:4000 callback)
 PORT=4000
 ```
 
@@ -66,19 +70,26 @@ PORT=4000
 | `/api/memories/:id` | DELETE | Delete memory |
 | `/api/scheduler` | GET | Scheduler status + job history |
 | `/api/scheduler/trigger` | POST | Manual briefing trigger |
+| `/api/google/auth` | GET | Get Google OAuth consent URL |
+| `/api/google/oauth/callback` | GET | OAuth callback handler |
+| `/api/gmail/status` | GET | Gmail connection status |
+| `/api/gmail/inbox` | GET | Recent inbox emails |
+| `/api/gmail/unread` | GET | Unread count |
+| `/api/gmail/search` | GET | Search emails (q param) |
+| `/api/calendar/status` | GET | Calendar connection status |
+| `/api/calendar/today` | GET | Today's events |
+| `/api/calendar/upcoming` | GET | Next N days events |
+| `/api/calendar/free` | GET | Free time slots today |
 
 ## Known Issues
 
-- **Supabase DNS**: `db.fhklghhdqsotgyptdlhr.supabase.co` not resolving.
-  Pooler also returns "Tenant not found". Need new Supabase project.
-  Server/dashboard handle this gracefully (JSON errors, partial rendering).
 - **Telegraf `launch()`**: Never resolves during long-polling. Scheduler and
   all other services start independently (non-blocking telegram start).
 
 ## Build
 
 ```bash
-npm run build          # builds all 8 packages
+npm run build          # builds all 9 packages
 npm run build -w @seneca/scheduler  # build single package
 ```
 
@@ -88,3 +99,5 @@ npm run build -w @seneca/scheduler  # build single package
 2. Memory — Voyage embeddings + pgvector + Drizzle ✅
 3. Dashboard — React SPA (Status, Memories, Chat) ✅
 4. Scheduler — Proactive briefings via cron → Telegram ✅
+5. Notion — Workspace tasks & sessions context ✅
+6. Google — Gmail + Calendar (OAuth2, read-only) ✅

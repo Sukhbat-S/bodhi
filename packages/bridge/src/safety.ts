@@ -6,16 +6,20 @@
 import type { BridgeOptions, ProjectConfig } from "@seneca/core";
 
 // Known projects and their default configs
-const PROJECTS: Record<string, ProjectConfig> = {
-  "jewelry-platform": {
+const PROJECTS: Record<string, ProjectConfig> = {};
+
+// Load default projects based on environment
+const jewelryPath = process.env.BODHI_PROJECT_DIR || "/Users/macbookpro/Documents/jewelry-platform";
+if (jewelryPath) {
+  PROJECTS["jewelry-platform"] = {
     name: "ЗҮҮСГЭЛ",
-    path: "/Users/macbookpro/Documents/jewelry-platform",
+    path: jewelryPath,
     description: "Jewelry e-commerce platform",
     defaultBranch: "main",
     allowedTools: ["Read", "Edit", "Bash", "Grep", "Glob", "Write"],
     maxBudgetUsd: 5,
-  },
-};
+  };
+}
 
 // Actions that require explicit confirmation via Telegram inline keyboard
 const DANGEROUS_PATTERNS = [

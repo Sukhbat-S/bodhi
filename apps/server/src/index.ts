@@ -20,6 +20,7 @@ dotenv.config({ path: envPath });
 import { Agent, ContextEngine, type ConversationMessage } from "@seneca/core";
 import { Bridge } from "@seneca/bridge";
 import { getDb } from "@seneca/db";
+import { sql } from "drizzle-orm";
 import { MemoryService, MemoryExtractor, MemoryContextProvider } from "@seneca/memory";
 import { TelegramBot } from "@seneca/channel-telegram";
 import { Scheduler } from "@seneca/scheduler";
@@ -64,6 +65,16 @@ async function main() {
   // 4. Initialize Database
   const db = getDb(config.DATABASE_URL);
   console.log("  Database: connected");
+
+  // 4a. Supabase free-tier keep-alive: ping every 3 days to prevent auto-pause
+  setInterval(async () => {
+    try {
+      await db.execute(sql`SELECT 1`);
+      console.log("[keepalive] Supabase ping OK");
+    } catch (err) {
+      console.error("[keepalive] Supabase ping failed:", err);
+    }
+  }, 3 * 24 * 60 * 60 * 1000);
 
   // 4b. Initialize Conversation Service
   const conversationService = new ConversationService(db);
@@ -179,7 +190,7 @@ async function main() {
     telegram: telegramBot,
     memoryService,
     contextEngine,
-    timezone: "Asia/Ulaanbaatar",
+    timezone: config.TIMEZONE,
     notion: notionService,
     gmail: gmailService,
     calendar: calendarService,
@@ -189,9 +200,13 @@ async function main() {
   // 10. Set up Hono API server (12 endpoints)
   const app = new Hono();
 
-  // CORS for dashboard (Vite dev on port 5173)
+  // CORS for dashboard (Vite dev on port 5173 + optional remote origins)
+  const corsOrigins = ["http://localhost:5173", "http://localhost:4000"];
+  if (config.CORS_ORIGINS) {
+    corsOrigins.push(...config.CORS_ORIGINS.split(",").map((o) => o.trim()));
+  }
   app.use("/*", cors({
-    origin: ["http://localhost:5173", "http://localhost:4000"],
+    origin: corsOrigins,
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type"],
   }));
@@ -212,6 +227,16 @@ async function main() {
       bridgeRunning: bridge.isRunning,
       memory: true,
     });
+  });
+
+  // Health check with DB connectivity (for Docker HEALTHCHECK / uptime monitors)
+  app.get("/health", async (c) => {
+    try {
+      await db.execute(sql`SELECT 1`);
+      return c.json({ status: "healthy", db: "connected", uptime: process.uptime() });
+    } catch {
+      return c.json({ status: "unhealthy", db: "disconnected", uptime: process.uptime() }, 503);
+    }
   });
 
   // API: Chat endpoint (for web/CLI channels later)
@@ -278,7 +303,7 @@ async function main() {
     }
 
     const task = await bridge.execute(body.prompt, {
-      cwd: body.cwd || "/Users/macbookpro/Documents/jewelry-platform",
+      cwd: body.cwd || config.BODHI_PROJECT_DIR || process.cwd(),
       maxTurns: body.maxTurns,
       maxBudgetUsd: body.maxBudgetUsd,
     });

@@ -141,6 +141,49 @@ Slash commands, subagents, hooks, and permissions live in `.claude/`.
 
 Pattern-based allow list for common commands: npm, git, curl to localhost, lsof/kill for port management.
 
+## Deployment (Docker / VPS)
+
+BODHI can run 24/7 on a VPS via Docker. Target: Oracle Cloud free ARM tier ($0/mo).
+
+### Quick Deploy
+
+```bash
+docker compose build          # Build image
+docker compose up -d           # Start in background
+docker compose logs -f         # Tail logs
+curl localhost:4000/health     # Verify health
+```
+
+### Environment Variables for Deployment
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `TIMEZONE` | Scheduler timezone | `Asia/Ulaanbaatar` |
+| `BODHI_PROJECT_DIR` | Default cwd for Bridge/code commands | `process.cwd()` |
+| `CORS_ORIGINS` | Extra CORS origins (comma-separated) | localhost only |
+
+### Claude Code CLI Auth on VPS
+
+Bridge spawns `claude` CLI as subprocess (headless, no TTY needed). Transfer auth from Mac:
+
+```bash
+scp ~/.config/claude-code/auth.json user@vps:~/.config/claude-code/auth.json
+```
+
+For Docker, mount via volume (configured in docker-compose.yml).
+
+### Supabase Keep-Alive
+
+Built-in `setInterval` pings database every 3 days to prevent free-tier auto-pause.
+
+### Files
+
+- `Dockerfile` — Multi-stage build (deps → runtime with tsx + claude CLI)
+- `docker-compose.yml` — Service config with volumes and log rotation
+- `.dockerignore` — Excludes node_modules, .env, .git
+- `deploy/bodhi.service` — systemd unit for boot persistence
+- `scripts/deploy.sh` — Pull, build, restart, verify
+
 ## Known Issues
 
 - **Telegraf `launch()`**: Never resolves during long-polling. Scheduler and
@@ -163,3 +206,4 @@ npm run build -w @seneca/scheduler  # build single package
 6. Google — Gmail + Calendar (OAuth2, read-only) ✅
 7. Conversations — Thread persistence + dashboard history panel ✅
 8. Skills Suite — Session workflow (/session-save, /session-start, /reflect, /learn, /recall) ✅
+9. Deployment — Docker + VPS setup (Dockerfile, keep-alive, configurable paths) ✅

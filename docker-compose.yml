@@ -1,0 +1,22 @@
+services:
+  bodhi:
+    build: .
+    container_name: bodhi
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./configs:/app/configs:ro
+      - claude-auth:/root/.config/claude-code
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  claude-auth:

@@ -145,7 +145,7 @@ export class TelegramBot {
         // No project matched — use entire text as prompt, default cwd
         prompt = text;
         options = {
-          cwd: "/Users/macbookpro/Documents/jewelry-platform",
+          cwd: process.env.BODHI_PROJECT_DIR || process.cwd(),
           allowedTools: ["Read", "Edit", "Bash", "Grep", "Glob", "Write"],
           maxBudgetUsd: 3,
         };

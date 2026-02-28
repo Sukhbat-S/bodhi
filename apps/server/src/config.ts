@@ -43,6 +43,11 @@ const envSchema = z.object({
 
   // Persona
   PERSONA_PATH: z.string().optional(),
+
+  // Deployment
+  TIMEZONE: z.string().default("Asia/Ulaanbaatar"),
+  BODHI_PROJECT_DIR: z.string().optional(),
+  CORS_ORIGINS: z.string().optional(),
 });
 
 export type Config = z.infer<typeof envSchema>;

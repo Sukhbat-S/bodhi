@@ -18,6 +18,14 @@ interface NotionDataSource {
   getBriefingSummary(): Promise<string>;
 }
 
+interface GmailDataSource {
+  getBriefingSummary(): Promise<string>;
+}
+
+interface CalendarDataSource {
+  getBriefingSummary(type: "morning" | "evening"): Promise<string>;
+}
+
 export interface SchedulerConfig {
   agent: Agent;
   telegram: TelegramSender;
@@ -25,6 +33,8 @@ export interface SchedulerConfig {
   contextEngine: ContextEngine;
   timezone: string; // e.g. "Asia/Ulaanbaatar"
   notion?: NotionDataSource | null;
+  gmail?: GmailDataSource | null;
+  calendar?: CalendarDataSource | null;
 }
 
 interface JobRecord {
@@ -205,7 +215,7 @@ export class Scheduler {
         })
         .join("\n");
 
-      // Optionally fetch Notion context (tasks, sessions)
+      // Optionally fetch external context (Notion, Gmail, Calendar)
       let notionSection = "";
       if (this.config.notion) {
         try {
@@ -218,6 +228,31 @@ export class Scheduler {
         }
       }
 
+      let gmailSection = "";
+      if (this.config.gmail) {
+        try {
+          const gmailSummary = await this.config.gmail.getBriefingSummary();
+          if (gmailSummary) {
+            gmailSection = `\n\n## Gmail Inbox\n\n${gmailSummary}`;
+          }
+        } catch (err) {
+          console.error("[scheduler] Gmail data fetch failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
+      let calendarSection = "";
+      if (this.config.calendar) {
+        try {
+          const briefingType = type === "evening" ? "evening" : "morning";
+          const calSummary = await this.config.calendar.getBriefingSummary(briefingType);
+          if (calSummary) {
+            calendarSection = `\n\n## Google Calendar\n\n${calSummary}`;
+          }
+        } catch (err) {
+          console.error("[scheduler] Calendar data fetch failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
       const prompt = `${PROMPTS[type]}
 
 ## Recent Memories (${recentMemories.length} items)
@@ -227,7 +262,7 @@ ${memoriesText}
 ## Stats
 - Total memories: ${stats.totalMemories}
 - New in last 24h: ${stats.recentCount}
-- Top tags: ${stats.topTags.map((t) => `${t.tag}(${t.count})`).join(", ") || "none"}${notionSection}
+- Top tags: ${stats.topTags.map((t) => `${t.tag}(${t.count})`).join(", ") || "none"}${notionSection}${gmailSection}${calendarSection}
 
 Generate the ${type} briefing now.`;
 

@@ -142,6 +142,22 @@ export default function StatusPage() {
           </div>
           <p className="text-xs text-stone-500">Proactive briefings via cron</p>
         </div>
+
+        <div className="bg-stone-900 border border-stone-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-stone-400">Gmail</h3>
+            <StatusBadge value={status?.gmail || "not configured"} />
+          </div>
+          <p className="text-xs text-stone-500">Email inbox context for briefings</p>
+        </div>
+
+        <div className="bg-stone-900 border border-stone-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-stone-400">Calendar</h3>
+            <StatusBadge value={status?.calendar || "not configured"} />
+          </div>
+          <p className="text-xs text-stone-500">Schedule context for briefings</p>
+        </div>
       </div>
 
       {/* Scheduler */}

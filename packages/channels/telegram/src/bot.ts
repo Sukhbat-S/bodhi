@@ -15,6 +15,15 @@ import {
 } from "@seneca/bridge";
 import type { MemoryService, MemoryExtractor } from "@seneca/memory";
 
+interface GmailServiceLike {
+  getUnreadCount(): Promise<number>;
+  getRecent(limit: number): Promise<{ from: string; subject: string; isUnread: boolean; date: string }[]>;
+}
+
+interface CalendarServiceLike {
+  getTodayEvents(): Promise<{ summary: string; start: string; end: string; isAllDay: boolean; location?: string }[]>;
+}
+
 interface BotConfig {
   token: string;
   allowedUserId: string;
@@ -23,6 +32,8 @@ interface BotConfig {
   contextEngine: ContextEngine;
   memoryService: MemoryService;
   memoryExtractor: MemoryExtractor;
+  gmailService?: GmailServiceLike;
+  calendarService?: CalendarServiceLike;
 }
 
 export class TelegramBot {
@@ -33,6 +44,8 @@ export class TelegramBot {
   private contextEngine: ContextEngine;
   private memoryService: MemoryService;
   private memoryExtractor: MemoryExtractor;
+  private gmailService?: GmailServiceLike;
+  private calendarService?: CalendarServiceLike;
 
   constructor(config: BotConfig) {
     this.bot = new Telegraf(config.token);
@@ -42,6 +55,8 @@ export class TelegramBot {
     this.contextEngine = config.contextEngine;
     this.memoryService = config.memoryService;
     this.memoryExtractor = config.memoryExtractor;
+    this.gmailService = config.gmailService;
+    this.calendarService = config.calendarService;
 
     this.setupMiddleware();
     this.setupCommands();
@@ -68,6 +83,9 @@ export class TelegramBot {
           "/ask <question> — Ask BODHI anything\n" +
           "/remember <text> — Save a memory\n" +
           "/recall <query> — Search memories\n" +
+          "/inbox — Email summary\n" +
+          "/schedule — Today's calendar\n" +
+          "/today — Combined snapshot\n" +
           "/status — Check system status\n" +
           "/projects — List registered projects\n" +
           "/help — Show this message"
@@ -81,6 +99,9 @@ export class TelegramBot {
           "/ask <question> — Ask BODHI (life, strategy, ideas)\n\n" +
           "/remember <text> — Store something in memory\n" +
           "/recall <query> — Search your memories\n\n" +
+          "/inbox — Recent emails + unread count\n" +
+          "/schedule — Today's calendar events\n" +
+          "/today — Combined snapshot (schedule + inbox)\n\n" +
           "/status — System status\n" +
           "/projects — List projects"
       );
@@ -286,6 +307,99 @@ export class TelegramBot {
 
       ctx.reply(`Registered Projects:\n\n${list}`);
     });
+
+    // /inbox — Email summary
+    this.bot.command("inbox", async (ctx) => {
+      if (!this.gmailService) {
+        return ctx.reply("Gmail not connected. Configure Google credentials on the server.");
+      }
+
+      try {
+        const [unread, recent] = await Promise.all([
+          this.gmailService.getUnreadCount(),
+          this.gmailService.getRecent(5),
+        ]);
+
+        const lines = recent.map((e) => {
+          const flag = e.isUnread ? " *" : "";
+          return `${e.from}: ${e.subject}${flag}\n  ${e.date}`;
+        });
+
+        ctx.reply(
+          `Inbox (${unread} unread)\n\n${lines.length > 0 ? lines.join("\n\n") : "No recent emails."}`
+        );
+      } catch (err) {
+        ctx.reply(`Failed to fetch inbox: ${err instanceof Error ? err.message : err}`);
+      }
+    });
+
+    // /schedule — Today's calendar events
+    this.bot.command("schedule", async (ctx) => {
+      if (!this.calendarService) {
+        return ctx.reply("Calendar not connected. Configure Google credentials on the server.");
+      }
+
+      try {
+        const events = await this.calendarService.getTodayEvents();
+
+        if (events.length === 0) {
+          return ctx.reply("No events scheduled for today.");
+        }
+
+        const lines = events.map((e) => {
+          const time = e.isAllDay
+            ? "All day"
+            : `${formatTimeShort(e.start)} - ${formatTimeShort(e.end)}`;
+          const loc = e.location ? `\n  @ ${e.location}` : "";
+          return `${time}: ${e.summary}${loc}`;
+        });
+
+        ctx.reply(`Today's Schedule (${events.length} events)\n\n${lines.join("\n\n")}`);
+      } catch (err) {
+        ctx.reply(`Failed to fetch schedule: ${err instanceof Error ? err.message : err}`);
+      }
+    });
+
+    // /today — Combined snapshot (inbox + schedule)
+    this.bot.command("today", async (ctx) => {
+      const parts: string[] = [];
+
+      if (this.calendarService) {
+        try {
+          const events = await this.calendarService.getTodayEvents();
+          if (events.length > 0) {
+            const lines = events.map((e) => {
+              const time = e.isAllDay ? "All day" : formatTimeShort(e.start);
+              return `  ${time}: ${e.summary}`;
+            });
+            parts.push(`Schedule (${events.length})\n${lines.join("\n")}`);
+          } else {
+            parts.push("Schedule: No events today");
+          }
+        } catch {
+          parts.push("Schedule: unavailable");
+        }
+      }
+
+      if (this.gmailService) {
+        try {
+          const [unread, recent] = await Promise.all([
+            this.gmailService.getUnreadCount(),
+            this.gmailService.getRecent(3),
+          ]);
+          const lines = recent.map((e) => `  ${e.from}: ${e.subject}`);
+          parts.push(`Inbox (${unread} unread)\n${lines.join("\n")}`);
+        } catch {
+          parts.push("Inbox: unavailable");
+        }
+      }
+
+      if (parts.length === 0) {
+        return ctx.reply("No Google services connected. Configure credentials on the server.");
+      }
+
+      ctx.reply(`Today's Snapshot\n\n${parts.join("\n\n")}`);
+    });
   }
 
   private setupMessageHandler() {
@@ -434,6 +548,15 @@ export class TelegramBot {
 function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength) + "\n\n... (truncated)";
+}
+
+function formatTimeShort(isoStr: string): string {
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return isoStr;
+  }
 }
 
 function formatAge(date: Date): string {

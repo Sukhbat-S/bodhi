@@ -24,6 +24,13 @@ import { MemoryService, MemoryExtractor, MemoryContextProvider } from "@seneca/m
 import { TelegramBot } from "@seneca/channel-telegram";
 import { Scheduler } from "@seneca/scheduler";
 import { NotionService, NotionContextProvider } from "@seneca/notion";
+import {
+  GoogleAuth,
+  GmailService,
+  CalendarService,
+  GmailContextProvider,
+  CalendarContextProvider,
+} from "@seneca/google";
 import { loadConfig } from "./config.js";
 
 async function main() {
@@ -80,13 +87,52 @@ async function main() {
     console.log("  Notion: skipped (no NOTION_API_KEY)");
   }
 
+  // 6b. Initialize Google (optional — Gmail + Calendar context)
+  let googleAuth: GoogleAuth | null = null;
+  let gmailService: GmailService | null = null;
+  let calendarService: CalendarService | null = null;
+  let gmailProvider: GmailContextProvider | null = null;
+  let calendarProvider: CalendarContextProvider | null = null;
+
+  if (config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET) {
+    googleAuth = new GoogleAuth({
+      clientId: config.GOOGLE_CLIENT_ID,
+      clientSecret: config.GOOGLE_CLIENT_SECRET,
+      redirectUri: config.GOOGLE_REDIRECT_URI || `http://localhost:${config.PORT}/api/google/oauth/callback`,
+      tokenPath: config.GOOGLE_TOKEN_PATH,
+    });
+
+    if (googleAuth.isAuthenticated()) {
+      gmailService = new GmailService(googleAuth);
+      calendarService = new CalendarService(googleAuth);
+      gmailProvider = new GmailContextProvider(gmailService);
+      calendarProvider = new CalendarContextProvider(calendarService);
+
+      const gmailOk = await gmailService.ping().catch(() => false);
+      const calOk = await calendarService.ping().catch(() => false);
+      console.log(`  Gmail: ${gmailOk ? "connected" : "FAILED to connect"}`);
+      console.log(`  Calendar: ${calOk ? "connected" : "FAILED to connect"}`);
+    } else {
+      console.log("  Google: credentials configured but not authenticated");
+      console.log(`  Visit http://localhost:${config.PORT}/api/google/auth to connect`);
+    }
+  } else {
+    console.log("  Google: skipped (no GOOGLE_CLIENT_ID)");
+  }
+
   // 7. Initialize Context Engine
   const contextEngine = new ContextEngine();
   contextEngine.register(memoryProvider);
   if (notionProvider) {
     contextEngine.register(notionProvider);
   }
-  const providerCount = 1 + (notionProvider ? 1 : 0);
+  if (gmailProvider) {
+    contextEngine.register(gmailProvider);
+  }
+  if (calendarProvider) {
+    contextEngine.register(calendarProvider);
+  }
+  const providerCount = 1 + (notionProvider ? 1 : 0) + (gmailProvider ? 1 : 0) + (calendarProvider ? 1 : 0);
   console.log(`  Context: initialized (${providerCount} provider${providerCount > 1 ? "s" : ""})`);
 
   // 8. Initialize Agent Core (routes through Bridge, not Anthropic API)
@@ -110,6 +156,8 @@ async function main() {
     contextEngine,
     memoryService,
     memoryExtractor,
+    gmailService: gmailService || undefined,
+    calendarService: calendarService || undefined,
   });
   console.log(`  Telegram: configured (user ${config.TELEGRAM_ALLOWED_USER_ID})`);
 
@@ -121,6 +169,8 @@ async function main() {
     contextEngine,
     timezone: "Asia/Ulaanbaatar",
     notion: notionService,
+    gmail: gmailService,
+    calendar: calendarService,
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings)");
 
@@ -344,6 +394,115 @@ async function main() {
     return c.json({ results });
   });
 
+  // API: Google OAuth + Gmail + Calendar
+  app.get("/api/google/auth", (c) => {
+    if (!googleAuth) {
+      return c.json({ error: "Google not configured (missing GOOGLE_CLIENT_ID)" }, 503);
+    }
+    const url = googleAuth.getAuthUrl();
+    return c.json({ url });
+  });
+
+  app.get("/api/google/oauth/callback", async (c) => {
+    if (!googleAuth) {
+      return c.json({ error: "Google not configured" }, 503);
+    }
+    const code = c.req.query("code");
+    if (!code) {
+      return c.json({ error: "Missing authorization code" }, 400);
+    }
+
+    try {
+      await googleAuth.handleCallback(code);
+
+      // Initialize services now that we're authenticated
+      if (!gmailService) {
+        gmailService = new GmailService(googleAuth);
+        gmailProvider = new GmailContextProvider(gmailService);
+        contextEngine.register(gmailProvider);
+      }
+      if (!calendarService) {
+        calendarService = new CalendarService(googleAuth);
+        calendarProvider = new CalendarContextProvider(calendarService);
+        contextEngine.register(calendarProvider);
+      }
+
+      return c.json({ status: "authenticated", gmail: true, calendar: true });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "OAuth failed" }, 500);
+    }
+  });
+
+  app.get("/api/gmail/status", async (c) => {
+    if (!gmailService) {
+      return c.json({ connected: false, reason: googleAuth ? "Not authenticated" : "Not configured" });
+    }
+    const connected = await gmailService.ping().catch(() => false);
+    return c.json({ connected });
+  });
+
+  app.get("/api/gmail/inbox", async (c) => {
+    if (!gmailService) {
+      return c.json({ error: "Gmail not connected" }, 503);
+    }
+    const limit = parseInt(c.req.query("limit") || "10");
+    const emails = await gmailService.getRecent(limit);
+    return c.json({ emails });
+  });
+
+  app.get("/api/gmail/unread", async (c) => {
+    if (!gmailService) {
+      return c.json({ error: "Gmail not connected" }, 503);
+    }
+    const count = await gmailService.getUnreadCount();
+    return c.json({ unread: count });
+  });
+
+  app.get("/api/gmail/search", async (c) => {
+    if (!gmailService) {
+      return c.json({ error: "Gmail not connected" }, 503);
+    }
+    const q = c.req.query("q");
+    if (!q) {
+      return c.json({ error: "q query parameter is required" }, 400);
+    }
+    const emails = await gmailService.search(q);
+    return c.json({ emails });
+  });
+
+  app.get("/api/calendar/status", async (c) => {
+    if (!calendarService) {
+      return c.json({ connected: false, reason: googleAuth ? "Not authenticated" : "Not configured" });
+    }
+    const connected = await calendarService.ping().catch(() => false);
+    return c.json({ connected });
+  });
+
+  app.get("/api/calendar/today", async (c) => {
+    if (!calendarService) {
+      return c.json({ error: "Calendar not connected" }, 503);
+    }
+    const events = await calendarService.getTodayEvents();
+    return c.json({ events });
+  });
+
+  app.get("/api/calendar/upcoming", async (c) => {
+    if (!calendarService) {
+      return c.json({ error: "Calendar not connected" }, 503);
+    }
+    const days = parseInt(c.req.query("days") || "7");
+    const events = await calendarService.getUpcoming(days);
+    return c.json({ events });
+  });
+
+  app.get("/api/calendar/free", async (c) => {
+    if (!calendarService) {
+      return c.json({ error: "Calendar not connected" }, 503);
+    }
+    const slots = await calendarService.getFreeTime();
+    return c.json({ slots });
+  });
+
   // API: Status
   app.get("/api/status", (c) => {
     return c.json({
@@ -351,6 +510,8 @@ async function main() {
       bridge: bridge.isRunning ? "running" : "idle",
       memory: "active",
       notion: notionService ? "connected" : "not configured",
+      gmail: gmailService ? "connected" : googleAuth ? "not authenticated" : "not configured",
+      calendar: calendarService ? "connected" : googleAuth ? "not authenticated" : "not configured",
       scheduler: scheduler.getStatus().running ? "running" : "stopped",
       uptime: process.uptime(),
       channels: {

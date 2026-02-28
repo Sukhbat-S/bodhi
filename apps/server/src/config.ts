@@ -26,6 +26,12 @@ const envSchema = z.object({
   NOTION_TASKS_DB: z.string().optional(),
   NOTION_SESSIONS_DB: z.string().optional(),
 
+  // Google (optional — enables Gmail + Calendar context)
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().optional(),
+  GOOGLE_TOKEN_PATH: z.string().optional(),
+
   // Server
   PORT: z.coerce.number().default(3000),
   NODE_ENV: z

@@ -23,6 +23,9 @@ export interface StatusResponse {
   agent: string;
   bridge: string;
   memory: string;
+  notion?: string;
+  gmail?: string;
+  calendar?: string;
   scheduler?: string;
   uptime: number;
   channels: Record<string, string>;

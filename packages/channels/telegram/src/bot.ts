@@ -5,6 +5,7 @@
 
 import { Telegraf, type Context } from "telegraf";
 import { message } from "telegraf/filters";
+import Groq from "groq-sdk";
 import type { Agent, ContextEngine } from "@seneca/core";
 import {
   Bridge,
@@ -34,6 +35,7 @@ interface BotConfig {
   memoryExtractor: MemoryExtractor;
   gmailService?: GmailServiceLike;
   calendarService?: CalendarServiceLike;
+  groqApiKey?: string;
 }
 
 export class TelegramBot {
@@ -46,6 +48,7 @@ export class TelegramBot {
   private memoryExtractor: MemoryExtractor;
   private gmailService?: GmailServiceLike;
   private calendarService?: CalendarServiceLike;
+  private groq: Groq | null;
 
   constructor(config: BotConfig) {
     this.bot = new Telegraf(config.token);
@@ -57,6 +60,7 @@ export class TelegramBot {
     this.memoryExtractor = config.memoryExtractor;
     this.gmailService = config.gmailService;
     this.calendarService = config.calendarService;
+    this.groq = config.groqApiKey ? new Groq({ apiKey: config.groqApiKey }) : null;
 
     this.setupMiddleware();
     this.setupCommands();
@@ -443,7 +447,17 @@ export class TelegramBot {
 
     // Handle voice messages
     this.bot.on(message("voice"), async (ctx) => {
-      await this.handleChat(ctx, "[User sent a voice message — voice transcription not yet supported]");
+      if (!this.groq) {
+        return ctx.reply("Voice transcription not configured (set GROQ_API_KEY).");
+      }
+
+      try {
+        const text = await this.transcribeVoice(ctx, ctx.message.voice.file_id);
+        await this.handleChat(ctx, `[Voice message] ${text}`);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        await ctx.reply(`Voice transcription failed: ${msg}`);
+      }
     });
 
     // Handle stickers
@@ -451,6 +465,20 @@ export class TelegramBot {
       const emoji = ctx.message.sticker.emoji || "";
       await this.handleChat(ctx, `[User sent a sticker ${emoji}]`);
     });
+  }
+
+  private async transcribeVoice(ctx: Context, fileId: string): Promise<string> {
+    const fileLink = await ctx.telegram.getFileLink(fileId);
+    const response = await fetch(fileLink.href);
+    const arrayBuffer = await response.arrayBuffer();
+    const file = new File([arrayBuffer], "voice.ogg", { type: "audio/ogg" });
+
+    const transcription = await this.groq!.audio.transcriptions.create({
+      model: "whisper-large-v3-turbo",
+      file,
+    });
+
+    return transcription.text;
   }
 
   private async handleChat(ctx: Context, message: string) {

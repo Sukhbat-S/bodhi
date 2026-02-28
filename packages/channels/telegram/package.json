@@ -10,9 +10,10 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@seneca/core": "*",
     "@seneca/bridge": "*",
+    "@seneca/core": "*",
     "@seneca/memory": "*",
+    "groq-sdk": "^0.37.0",
     "telegraf": "^4.16.0"
   },
   "devDependencies": {

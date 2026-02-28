@@ -17,7 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(__dirname, "../../../.env");
 dotenv.config({ path: envPath });
 
-import { Agent, ContextEngine } from "@seneca/core";
+import { Agent, ContextEngine, type ConversationMessage } from "@seneca/core";
 import { Bridge } from "@seneca/bridge";
 import { getDb } from "@seneca/db";
 import { MemoryService, MemoryExtractor, MemoryContextProvider } from "@seneca/memory";
@@ -32,6 +32,7 @@ import {
   CalendarContextProvider,
 } from "@seneca/google";
 import { loadConfig } from "./config.js";
+import { ConversationService } from "./services/conversation.js";
 
 async function main() {
   console.log("🌳  BODHI starting up...\n");
@@ -62,6 +63,10 @@ async function main() {
   // 4. Initialize Database
   const db = getDb(config.DATABASE_URL);
   console.log("  Database: connected");
+
+  // 4b. Initialize Conversation Service
+  const conversationService = new ConversationService(db);
+  console.log("  Conversations: initialized");
 
   // 5. Initialize Memory System
   const memoryService = new MemoryService(db, config.VOYAGE_API_KEY);
@@ -204,20 +209,47 @@ async function main() {
 
   // API: Chat endpoint (for web/CLI channels later)
   app.post("/api/chat", async (c) => {
-    const body = await c.req.json<{ message: string }>();
+    const body = await c.req.json<{ message: string; threadId?: string }>();
 
     if (!body.message) {
       return c.json({ error: "message is required" }, 400);
     }
 
+    // Resolve or create thread
+    let threadId = body.threadId;
+    let history: ConversationMessage[] = [];
+
+    if (threadId) {
+      const turns = await conversationService.getTurns(threadId);
+      history = turns.map((t) => ({ role: t.role, content: t.content }));
+    } else {
+      const thread = await conversationService.createThread("web");
+      threadId = thread.id;
+      // Auto-set title from first message
+      const title = body.message.slice(0, 60) + (body.message.length > 60 ? "..." : "");
+      await conversationService.updateTitle(threadId, title);
+    }
+
     // Retrieve relevant context
     const context = await contextEngine.gather(body.message);
-    const response = await agent.chat(body.message, context);
+    const response = await agent.chat(body.message, context, history);
+
+    // Persist turns
+    await conversationService.addTurn(threadId, { role: "user", content: body.message, channel: "web" });
+    await conversationService.addTurn(threadId, {
+      role: "assistant",
+      content: response.content,
+      channel: "web",
+      modelUsed: response.model,
+      durationMs: response.durationMs,
+    });
+    await conversationService.touchThread(threadId);
 
     // Extract memories async
     memoryExtractor.extract(body.message, response.content).catch(() => {});
 
     return c.json({
+      threadId,
       content: response.content,
       model: response.model,
       tokenUsage: response.tokenUsage,
@@ -309,17 +341,34 @@ async function main() {
 
   // API: Streaming chat (SSE)
   app.post("/api/chat/stream", async (c) => {
-    const body = await c.req.json<{ message: string }>();
+    const body = await c.req.json<{ message: string; threadId?: string }>();
     if (!body.message) {
       return c.json({ error: "message is required" }, 400);
+    }
+
+    // Resolve or create thread
+    let threadId = body.threadId;
+    let history: ConversationMessage[] = [];
+
+    if (threadId) {
+      const turns = await conversationService.getTurns(threadId);
+      history = turns.map((t) => ({ role: t.role, content: t.content }));
+    } else {
+      const thread = await conversationService.createThread("web");
+      threadId = thread.id;
+      const title = body.message.slice(0, 60) + (body.message.length > 60 ? "..." : "");
+      await conversationService.updateTitle(threadId, title);
     }
 
     const context = await contextEngine.gather(body.message);
 
     return streamSSE(c, async (stream) => {
+      // Send threadId as the first event so the client can track it
+      await stream.writeSSE({ data: JSON.stringify({ type: "thread", threadId }) });
+
       const response = await agent.stream(body.message, context, async (chunk) => {
         await stream.writeSSE({ data: JSON.stringify({ type: "chunk", content: chunk }) });
-      });
+      }, history);
 
       await stream.writeSSE({
         data: JSON.stringify({
@@ -327,12 +376,48 @@ async function main() {
           content: response.content,
           model: response.model,
           durationMs: response.durationMs,
+          threadId,
         }),
       });
+
+      // Persist turns (don't block SSE close)
+      conversationService.addTurn(threadId!, { role: "user", content: body.message, channel: "web" }).catch(() => {});
+      conversationService.addTurn(threadId!, {
+        role: "assistant",
+        content: response.content,
+        channel: "web",
+        modelUsed: response.model,
+        durationMs: response.durationMs,
+      }).catch(() => {});
+      conversationService.touchThread(threadId!).catch(() => {});
 
       // Extract memories async (don't block SSE close)
       memoryExtractor.extract(body.message, response.content).catch(() => {});
     });
+  });
+
+  // API: Conversations
+  app.get("/api/conversations", async (c) => {
+    const limit = parseInt(c.req.query("limit") || "20");
+    const offset = parseInt(c.req.query("offset") || "0");
+    const result = await conversationService.listThreads(limit, offset);
+    return c.json(result);
+  });
+
+  app.get("/api/conversations/:id", async (c) => {
+    const id = c.req.param("id");
+    const thread = await conversationService.getThread(id);
+    if (!thread) {
+      return c.json({ error: "Thread not found" }, 404);
+    }
+    const turns = await conversationService.getTurns(id);
+    return c.json({ thread, turns });
+  });
+
+  app.delete("/api/conversations/:id", async (c) => {
+    const id = c.req.param("id");
+    await conversationService.deleteThread(id);
+    return c.json({ deleted: true });
   });
 
   // API: Scheduler

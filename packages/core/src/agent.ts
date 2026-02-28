@@ -20,7 +20,7 @@ const DEFAULT_CONFIG: AgentConfig = {
   contextBudgetTokens: 2000,
 };
 
-interface ConversationMessage {
+export interface ConversationMessage {
   role: "user" | "assistant";
   content: string;
 }
@@ -40,13 +40,17 @@ export class Agent {
 
   async chat(
     userMessage: string,
-    context?: ContextSnapshot
+    context?: ContextSnapshot,
+    history?: ConversationMessage[]
   ): Promise<AgentResponse> {
     const startTime = Date.now();
 
-    this.conversationHistory.push({ role: "user", content: userMessage });
+    // If external history provided, use it; otherwise use internal accumulation
+    if (!history) {
+      this.conversationHistory.push({ role: "user", content: userMessage });
+    }
 
-    const fullPrompt = this.buildFullPrompt(userMessage, context);
+    const fullPrompt = this.buildFullPrompt(userMessage, context, history);
 
     console.log("[agent] Sending chat to Bridge...");
 
@@ -61,13 +65,15 @@ export class Agent {
     // Use result, or error message, or fallback
     const assistantContent = task.result || task.error || "I couldn't generate a response.";
 
-    this.conversationHistory.push({
-      role: "assistant",
-      content: assistantContent,
-    });
+    if (!history) {
+      this.conversationHistory.push({
+        role: "assistant",
+        content: assistantContent,
+      });
 
-    if (this.conversationHistory.length > 40) {
-      this.conversationHistory = this.conversationHistory.slice(-40);
+      if (this.conversationHistory.length > 40) {
+        this.conversationHistory = this.conversationHistory.slice(-40);
+      }
     }
 
     return {
@@ -83,13 +89,16 @@ export class Agent {
   async stream(
     userMessage: string,
     context?: ContextSnapshot,
-    onChunk?: (text: string) => void
+    onChunk?: (text: string) => void,
+    history?: ConversationMessage[]
   ): Promise<AgentResponse> {
     const startTime = Date.now();
 
-    this.conversationHistory.push({ role: "user", content: userMessage });
+    if (!history) {
+      this.conversationHistory.push({ role: "user", content: userMessage });
+    }
 
-    const fullPrompt = this.buildFullPrompt(userMessage, context);
+    const fullPrompt = this.buildFullPrompt(userMessage, context, history);
 
     console.log("[agent] Sending stream to Bridge...");
 
@@ -112,10 +121,12 @@ export class Agent {
     // Use result, or error message, or fallback
     const fullText = task.result || task.error || "I couldn't generate a response.";
 
-    this.conversationHistory.push({ role: "assistant", content: fullText });
+    if (!history) {
+      this.conversationHistory.push({ role: "assistant", content: fullText });
 
-    if (this.conversationHistory.length > 40) {
-      this.conversationHistory = this.conversationHistory.slice(-40);
+      if (this.conversationHistory.length > 40) {
+        this.conversationHistory = this.conversationHistory.slice(-40);
+      }
     }
 
     return {
@@ -143,7 +154,8 @@ export class Agent {
    */
   private buildFullPrompt(
     userMessage: string,
-    context?: ContextSnapshot
+    context?: ContextSnapshot,
+    history?: ConversationMessage[]
   ): string {
     let prompt = "<system>\n";
     prompt += this.config.persona;
@@ -158,8 +170,8 @@ export class Agent {
     prompt += "\n\nIMPORTANT: You are in a conversational chat. Respond directly to the user. Do NOT use any tools. Do NOT try to read, write, or edit any files. Just respond with text.\n";
     prompt += "</system>\n\n";
 
-    // Add conversation history
-    const historyMessages = this.conversationHistory.slice(0, -1);
+    // Use external history if provided, otherwise use internal (minus the latest user message)
+    const historyMessages = history ?? this.conversationHistory.slice(0, -1);
     if (historyMessages.length > 0) {
       prompt += "<conversation_history>\n";
       for (const msg of historyMessages) {

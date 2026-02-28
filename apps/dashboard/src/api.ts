@@ -132,6 +132,45 @@ export function triggerBriefing(type: "morning" | "evening" | "weekly") {
   );
 }
 
+// --- Conversations ---
+
+export interface ConversationThread {
+  id: string;
+  channel: string;
+  title: string | null;
+  createdAt: string;
+  lastActiveAt: string;
+}
+
+export interface ConversationTurn {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
+export function getConversations(limit = 20, offset = 0) {
+  const qs = new URLSearchParams();
+  if (limit) qs.set("limit", String(limit));
+  if (offset) qs.set("offset", String(offset));
+  const query = qs.toString();
+  return request<{ threads: ConversationThread[]; total: number }>(
+    `/conversations${query ? `?${query}` : ""}`
+  );
+}
+
+export function getConversation(id: string) {
+  return request<{ thread: ConversationThread; turns: ConversationTurn[] }>(
+    `/conversations/${id}`
+  );
+}
+
+export function deleteConversation(id: string) {
+  return request<{ deleted: boolean }>(`/conversations/${id}`, {
+    method: "DELETE",
+  });
+}
+
 // --- Chat ---
 
 export interface ChatMessage {
@@ -142,12 +181,13 @@ export interface ChatMessage {
 export async function streamChat(
   message: string,
   onChunk: (text: string) => void,
-  onDone: (full: string) => void
-) {
+  onDone: (full: string, threadId?: string) => void,
+  threadId?: string
+): Promise<string | undefined> {
   const res = await fetch(`${BASE}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, threadId }),
   });
 
   if (!res.ok) {
@@ -159,6 +199,7 @@ export async function streamChat(
 
   const decoder = new TextDecoder();
   let buffer = "";
+  let resolvedThreadId: string | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -172,10 +213,12 @@ export async function streamChat(
       if (line.startsWith("data: ")) {
         try {
           const event = JSON.parse(line.slice(6));
-          if (event.type === "chunk") {
+          if (event.type === "thread") {
+            resolvedThreadId = event.threadId;
+          } else if (event.type === "chunk") {
             onChunk(event.content);
           } else if (event.type === "done") {
-            onDone(event.content);
+            onDone(event.content, event.threadId);
           }
         } catch {
           // skip malformed SSE lines
@@ -183,4 +226,6 @@ export async function streamChat(
       }
     }
   }
+
+  return resolvedThreadId;
 }

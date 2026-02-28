@@ -6,7 +6,7 @@
 import { eq, desc, sql, and } from "drizzle-orm";
 import { memories } from "@seneca/db";
 import type { Database } from "@seneca/db";
-import { embedSingle, DIMENSIONS } from "./embedding.js";
+import { embed, embedSingle, DIMENSIONS } from "./embedding.js";
 
 export interface MemoryInput {
   content: string;
@@ -54,6 +54,34 @@ export class MemoryService {
       .returning({ id: memories.id });
 
     return result.id;
+  }
+
+  async storeBatch(
+    inputs: MemoryInput[]
+  ): Promise<{ stored: number; ids: string[] }> {
+    if (inputs.length === 0) return { stored: 0, ids: [] };
+
+    // Batch-embed all texts in a single Voyage AI API call
+    const texts = inputs.map((i) => i.content);
+    const embeddings = await embed(texts, this.voyageApiKey);
+
+    // Insert all memories in one transaction
+    const values = inputs.map((input, idx) => ({
+      content: input.content,
+      type: input.type || ("fact" as const),
+      source: input.source || ("manual" as const),
+      sourceThreadId: input.sourceThreadId,
+      importance: input.importance ?? 0.5,
+      embedding: embeddings[idx],
+      tags: input.tags,
+    }));
+
+    const results = await this.db
+      .insert(memories)
+      .values(values)
+      .returning({ id: memories.id });
+
+    return { stored: results.length, ids: results.map((r) => r.id) };
   }
 
   async retrieve(query: string, limit = 5): Promise<MemoryResult[]> {

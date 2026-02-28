@@ -340,6 +340,36 @@ async function main() {
     return c.json({ id }, 201);
   });
 
+  app.post("/api/memories/batch", async (c) => {
+    const body = await c.req.json<{
+      memories: Array<{
+        content: string;
+        tags?: string[];
+        importance?: number;
+        type?: "fact" | "decision" | "pattern" | "preference" | "event";
+      }>;
+    }>();
+
+    if (!body.memories || !Array.isArray(body.memories) || body.memories.length === 0) {
+      return c.json({ error: "memories array is required" }, 400);
+    }
+
+    if (body.memories.length > 128) {
+      return c.json({ error: "max 128 memories per batch" }, 400);
+    }
+
+    const inputs = body.memories.map((m) => ({
+      content: m.content,
+      tags: m.tags,
+      importance: m.importance,
+      type: m.type,
+      source: "manual" as const,
+    }));
+
+    const result = await memoryService.storeBatch(inputs);
+    return c.json(result, 201);
+  });
+
   app.delete("/api/memories/:id", async (c) => {
     const id = c.req.param("id");
     await memoryService.forget(id);

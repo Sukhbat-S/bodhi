@@ -307,6 +307,36 @@ export class TelegramBot {
       // Otherwise, chat with BODHI
       await this.handleChat(ctx, text);
     });
+
+    // Handle photo messages (with optional caption) as chat with BODHI
+    this.bot.on(message("photo"), async (ctx) => {
+      const caption = ctx.message.caption || "";
+      const text = caption
+        ? `[User sent a photo with caption: ${caption}]`
+        : "[User sent a photo]";
+      await this.handleChat(ctx, text);
+    });
+
+    // Handle document/file messages (with optional caption)
+    this.bot.on(message("document"), async (ctx) => {
+      const caption = ctx.message.caption || "";
+      const fileName = ctx.message.document.file_name || "unknown file";
+      const text = caption
+        ? `[User sent a file: ${fileName}, caption: ${caption}]`
+        : `[User sent a file: ${fileName}]`;
+      await this.handleChat(ctx, text);
+    });
+
+    // Handle voice messages
+    this.bot.on(message("voice"), async (ctx) => {
+      await this.handleChat(ctx, "[User sent a voice message — voice transcription not yet supported]");
+    });
+
+    // Handle stickers
+    this.bot.on(message("sticker"), async (ctx) => {
+      const emoji = ctx.message.sticker.emoji || "";
+      await this.handleChat(ctx, `[User sent a sticker ${emoji}]`);
+    });
   }
 
   private async handleChat(ctx: Context, message: string) {

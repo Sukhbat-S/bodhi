@@ -79,12 +79,14 @@ export class MemoryService {
     // Update access stats for retrieved memories
     const ids = (results as any[]).map((r: any) => r.id);
     if (ids.length > 0) {
-      await this.db.execute(sql`
+      // Build a SQL-safe array literal for uuid casting
+      const idList = ids.map((id: string) => `'${id}'`).join(",");
+      await this.db.execute(sql.raw(`
         UPDATE memories
         SET access_count = access_count + 1,
             last_accessed_at = now()
-        WHERE id = ANY(${ids}::uuid[])
-      `);
+        WHERE id IN (${idList})
+      `));
     }
 
     return (results as any[]).map((r: any) => ({

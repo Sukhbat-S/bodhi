@@ -2,8 +2,7 @@
   "name": "@seneca/scheduler",
   "version": "0.1.0",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.ts",
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist"

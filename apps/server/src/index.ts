@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -201,8 +202,10 @@ async function main() {
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings)");
 
-  // 10. Set up Hono API server (12 endpoints)
+  // 10. Set up Hono API server
   const app = new Hono();
+  const dashboardDistPath = path.resolve(__dirname, "../../../apps/dashboard/dist");
+  const hasDashboard = fs.existsSync(dashboardDistPath);
 
   // CORS for dashboard (Vite dev on port 5173 + optional remote origins)
   const corsOrigins = ["http://localhost:5173", "http://localhost:4000"];
@@ -211,7 +214,7 @@ async function main() {
   }
   app.use("/*", cors({
     origin: corsOrigins,
-    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type"],
   }));
 
@@ -221,17 +224,19 @@ async function main() {
     return c.json({ error: err.message }, 500);
   });
 
-  // Health check
-  app.get("/", (c) => {
-    return c.json({
-      name: "BODHI",
-      status: "online",
-      version: "0.2.0",
-      uptime: process.uptime(),
-      bridgeRunning: bridge.isRunning,
-      memory: true,
+  // Root: serve dashboard when built, else JSON health check
+  if (!hasDashboard) {
+    app.get("/", (c) => {
+      return c.json({
+        name: "BODHI",
+        status: "online",
+        version: "0.3.0",
+        uptime: process.uptime(),
+        bridgeRunning: bridge.isRunning,
+        memory: true,
+      });
     });
-  });
+  }
 
   // Health check with DB connectivity (for Docker HEALTHCHECK / uptime monitors)
   app.get("/health", async (c) => {
@@ -403,6 +408,48 @@ async function main() {
     const id = c.req.param("id");
     await memoryService.forget(id);
     return c.json({ deleted: true });
+  });
+
+  app.patch("/api/memories/:id", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<{ importanceDelta?: number; confidenceDelta?: number }>();
+
+    if (body.importanceDelta !== undefined) {
+      await memoryService.adjustImportance([id], body.importanceDelta);
+    }
+    if (body.confidenceDelta !== undefined) {
+      await memoryService.adjustConfidence([id], body.confidenceDelta);
+    }
+
+    return c.json({ updated: true });
+  });
+
+  app.get("/api/memories/insights", async (c) => {
+    const insights = await insightGenerator.generate();
+    return c.json({ insights });
+  });
+
+  app.get("/api/memories/quality", async (c) => {
+    const [stale, neglected, frequent, tagTrends, recentRate, totalRate] =
+      await Promise.all([
+        memoryService.getStaleMemories(30, 0.5),
+        memoryService.getNeglectedHighValue(0.7, 0, 14),
+        memoryService.getFrequentlyAccessed(5, 20),
+        memoryService.getTagTrends(7, 7),
+        memoryService.getCreationRate(7),
+        memoryService.getCreationRate(14),
+      ]);
+
+    return c.json({
+      stale,
+      neglected,
+      frequent,
+      tagTrends,
+      creationRate: {
+        thisWeek: recentRate,
+        lastWeek: totalRate - recentRate,
+      },
+    });
   });
 
   // API: Streaming chat (SSE)
@@ -672,6 +719,29 @@ async function main() {
       },
     });
   });
+
+  // === Static Dashboard Serving ===
+  if (hasDashboard) {
+    console.log(`  Dashboard: serving static build from ${dashboardDistPath}`);
+
+    app.use(
+      "/assets/*",
+      serveStatic({
+        root: "apps/dashboard/dist",
+        onFound: (_path, c) => {
+          c.header("Cache-Control", "public, immutable, max-age=31536000");
+        },
+      })
+    );
+
+    // SPA fallback: serve index.html for any non-API, non-asset route
+    app.get("*", (c) => {
+      const html = fs.readFileSync(path.join(dashboardDistPath, "index.html"), "utf-8");
+      return c.html(html);
+    });
+  } else {
+    console.log("  Dashboard: no static build found (dev mode — use Vite on :5173)");
+  }
 
   // 11. Start everything
   console.log("\n  Starting services...");

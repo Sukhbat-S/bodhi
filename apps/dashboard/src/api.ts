@@ -103,6 +103,45 @@ export function deleteMemory(id: string) {
   });
 }
 
+export function patchMemory(
+  id: string,
+  data: { importanceDelta?: number; confidenceDelta?: number }
+) {
+  return request<{ updated: boolean }>(`/memories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+// --- Memory Quality ---
+
+export interface Insight {
+  type: "trend" | "stalled" | "neglected" | "activity";
+  text: string;
+}
+
+export interface TagTrend {
+  tag: string;
+  recent: number;
+  previous: number;
+}
+
+export interface MemoryQuality {
+  stale: Memory[];
+  neglected: Memory[];
+  frequent: Memory[];
+  tagTrends: TagTrend[];
+  creationRate: { thisWeek: number; lastWeek: number };
+}
+
+export function getMemoryInsights() {
+  return request<{ insights: Insight[] }>("/memories/insights");
+}
+
+export function getMemoryQuality() {
+  return request<MemoryQuality>("/memories/quality");
+}
+
 // --- Scheduler ---
 
 export interface SchedulerJob {

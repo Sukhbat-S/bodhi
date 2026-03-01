@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/components/chatmessage.tsx","./src/components/memorycard.tsx","./src/components/sidebar.tsx","./src/pages/chatpage.tsx","./src/pages/memoriespage.tsx","./src/pages/statuspage.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/components/chatmessage.tsx","./src/components/memorycard.tsx","./src/components/sidebar.tsx","./src/pages/chatpage.tsx","./src/pages/memoriespage.tsx","./src/pages/qualitypage.tsx","./src/pages/statuspage.tsx"],"version":"5.9.3"}

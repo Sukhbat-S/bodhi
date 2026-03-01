@@ -26,7 +26,16 @@ COPY apps/dashboard/package.json apps/dashboard/
 
 RUN npm ci
 
-# Stage 2: Runtime
+# Stage 2: Build dashboard (Vite + React)
+FROM node:22-slim AS dashboard-build
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+RUN npm run build -w @seneca/dashboard
+
+# Stage 3: Runtime
 FROM node:22-slim
 WORKDIR /app
 
@@ -39,6 +48,9 @@ COPY --from=deps /app/node_modules ./node_modules
 
 # Copy full source (tsx runs TypeScript directly, no build step needed)
 COPY . .
+
+# Copy built dashboard from build stage
+COPY --from=dashboard-build /app/apps/dashboard/dist ./apps/dashboard/dist
 
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
   CMD curl -f http://localhost:4000/health || exit 1

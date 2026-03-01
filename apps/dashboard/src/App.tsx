@@ -3,6 +3,8 @@ import Sidebar from "./components/Sidebar";
 import StatusPage from "./pages/StatusPage";
 import MemoriesPage from "./pages/MemoriesPage";
 import QualityPage from "./pages/QualityPage";
+import InboxPage from "./pages/InboxPage";
+import CalendarPage from "./pages/CalendarPage";
 import ChatPage from "./pages/ChatPage";
 
 export default function App() {
@@ -14,6 +16,8 @@ export default function App() {
           <Route path="/" element={<StatusPage />} />
           <Route path="/memories" element={<MemoriesPage />} />
           <Route path="/quality" element={<QualityPage />} />
+          <Route path="/inbox" element={<InboxPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/chat" element={<ChatPage />} />
         </Routes>
       </main>

@@ -142,6 +142,74 @@ export function getMemoryQuality() {
   return request<MemoryQuality>("/memories/quality");
 }
 
+// --- Gmail ---
+
+export interface EmailSummary {
+  id: string;
+  threadId: string;
+  from: string;
+  subject: string;
+  snippet: string;
+  date: string;
+  isUnread: boolean;
+  labels: string[];
+}
+
+export function getGmailStatus() {
+  return request<{ connected: boolean; reason?: string }>("/gmail/status");
+}
+
+export function getGmailInbox(limit = 20) {
+  return request<{ emails: EmailSummary[] }>(`/gmail/inbox?limit=${limit}`);
+}
+
+export function getGmailUnread() {
+  return request<{ unread: number }>("/gmail/unread");
+}
+
+export function searchGmail(q: string) {
+  return request<{ emails: EmailSummary[] }>(
+    `/gmail/search?q=${encodeURIComponent(q)}`
+  );
+}
+
+// --- Calendar ---
+
+export interface CalendarEvent {
+  id: string;
+  summary: string;
+  description?: string;
+  start: string;
+  end: string;
+  location?: string;
+  attendees: string[];
+  isAllDay: boolean;
+  status: string;
+  htmlLink?: string;
+}
+
+export interface FreeSlot {
+  start: string;
+  end: string;
+  durationMinutes: number;
+}
+
+export function getCalendarStatus() {
+  return request<{ connected: boolean; reason?: string }>("/calendar/status");
+}
+
+export function getCalendarToday() {
+  return request<{ events: CalendarEvent[] }>("/calendar/today");
+}
+
+export function getCalendarUpcoming(days = 7) {
+  return request<{ events: CalendarEvent[] }>(`/calendar/upcoming?days=${days}`);
+}
+
+export function getCalendarFree() {
+  return request<{ slots: FreeSlot[] }>("/calendar/free");
+}
+
 // --- Scheduler ---
 
 export interface SchedulerJob {

@@ -44,6 +44,10 @@ apps/
 - **Google OAuth tokens**: stored in `.google-token.json` (gitignored), auto-refreshes
 - **Conversation history**: Agent has no DB dependency — server passes `history` array to `chat()`/`stream()`. Telegram still uses Agent's internal in-memory history.
 - **ConversationService**: lives in `apps/server/src/services/conversation.ts`, uses Drizzle schema directly
+- **MemorySynthesizer**: daily cron at 03:00 — dedup (>0.92 similarity), connect (clusters → AI synthesis), decay (stale -0.1 confidence), promote (frequent +0.1 importance)
+- **InsightGenerator**: pure SQL pattern detection — tag trends, stalled decisions, activity rates, neglected knowledge. Feeds into briefing prompts.
+- **Cross-session reasoning**: MemoryExtractor.crossReference() runs after each extraction, detects recurring themes across sessions, auto-creates pattern memories tagged `["auto-synthesis", "cross-session"]`
+- **Memory source "synthesis"**: auto-generated memories are tagged with source="synthesis" to distinguish from manual/extraction
 
 ## Dev Workflow
 
@@ -207,3 +211,4 @@ npm run build -w @seneca/scheduler  # build single package
 7. Conversations — Thread persistence + dashboard history panel ✅
 8. Skills Suite — Session workflow (/session-save, /session-start, /reflect, /learn, /recall) ✅
 9. Deployment — Docker + VPS setup (Dockerfile, keep-alive, configurable paths) ✅
+10. Intelligence — Self-improvement loop, cross-session reasoning, proactive insights ✅

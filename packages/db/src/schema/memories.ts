@@ -26,6 +26,7 @@ export const memorySourceEnum = pgEnum("memory_source", [
   "conversation",
   "manual",
   "extraction",
+  "synthesis",
 ]);
 
 export const memories = pgTable("memories", {

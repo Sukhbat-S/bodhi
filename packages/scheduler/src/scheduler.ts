@@ -1,14 +1,18 @@
 // ============================================================
 // BODHI — Proactive Scheduler
 // Sends daily briefings, evening reflections, weekly syntheses
-// via Telegram on a cron schedule
+// via Telegram on a cron schedule.
+// Also runs daily memory synthesis (dedup, connect, decay, promote).
 // ============================================================
 
 import cron, { type ScheduledTask } from "node-cron";
 import type { Agent, ContextEngine } from "@seneca/core";
 import type { MemoryService } from "@seneca/memory";
+import type { MemorySynthesizer } from "@seneca/memory";
+import type { InsightGenerator, Insight } from "@seneca/memory";
 
 export type BriefingType = "morning" | "evening" | "weekly";
+export type SchedulerJobType = BriefingType | "synthesis";
 
 interface TelegramSender {
   sendProactiveMessage(text: string): Promise<void>;
@@ -35,10 +39,12 @@ export interface SchedulerConfig {
   notion?: NotionDataSource | null;
   gmail?: GmailDataSource | null;
   calendar?: CalendarDataSource | null;
+  synthesizer?: MemorySynthesizer | null;
+  insightGenerator?: InsightGenerator | null;
 }
 
 interface JobRecord {
-  type: BriefingType;
+  type: SchedulerJobType;
   lastRun: Date | null;
   lastResult: "sent" | "skipped" | "error" | null;
   lastDurationMs: number | null;
@@ -55,7 +61,8 @@ Structure your response in this order:
 1. **Today's Schedule** — list events with times. If no events, say "Clear day — no meetings."
 2. **Inbox Snapshot** — unread count + any notable emails worth flagging (important senders, action items). Keep to 1-2 lines.
 3. **Pattern/Observation** — one insight from recent memories about what he's building or where his attention is going.
-4. **Question** — one short reflective question.
+4. **Brain Insights** — if insights are provided below, weave the most interesting one into your observation naturally.
+5. **Question** — one short reflective question.
 
 Rules:
 - Mirror mode: observe, don't prescribe
@@ -73,7 +80,7 @@ Your job: reflect on what actually happened today and ask one question.
 Structure your response in this order:
 1. **Day Recap** — what happened today based on memories and calendar events.
 2. **Inbox** — if there were notable emails today, mention them briefly. Otherwise skip.
-3. **Observation** — one honest observation about the day.
+3. **Observation** — one honest observation about the day. If brain insights are provided, incorporate the most relevant one.
 4. **Tomorrow Preview** — if tomorrow's schedule is provided, mention what's coming.
 5. **Question** — one question.
 
@@ -92,8 +99,8 @@ Your job: patterns emerging, what's growing, what might need attention.
 Structure your response in this order:
 1. **Week in Review** — what he focused on, key events and meetings from the calendar.
 2. **Inbox Patterns** — any notable email threads or recurring senders worth flagging.
-3. **Patterns** — what's building across projects, decisions, energy.
-4. **Attention** — anything that might need attention next week.
+3. **Patterns** — what's building across projects, decisions, energy. Incorporate brain insights if provided.
+4. **Attention** — anything that might need attention next week. Flag stalled decisions or neglected knowledge if listed in insights.
 5. **Question** — one question about direction.
 
 Rules:
@@ -106,14 +113,14 @@ Rules:
 export class Scheduler {
   private config: SchedulerConfig;
   private tasks: ScheduledTask[] = [];
-  private jobs: Map<BriefingType, JobRecord> = new Map();
+  private jobs: Map<SchedulerJobType, JobRecord> = new Map();
   private running = false;
 
   constructor(config: SchedulerConfig) {
     this.config = config;
 
     // Initialize job records
-    for (const type of ["morning", "evening", "weekly"] as BriefingType[]) {
+    for (const type of ["morning", "evening", "weekly", "synthesis"] as SchedulerJobType[]) {
       this.jobs.set(type, {
         type,
         lastRun: null,
@@ -153,7 +160,17 @@ export class Scheduler {
       })
     );
 
-    console.log("[scheduler] Started — morning 08:00, evening 18:00, weekly Sun 20:00 UB");
+    // Memory synthesis: daily at 03:00 (dedup, connect, decay, promote)
+    if (this.config.synthesizer) {
+      this.tasks.push(
+        cron.schedule("0 3 * * *", () => this.runSynthesis(), {
+          timezone: tz,
+        })
+      );
+      console.log("[scheduler] Started — morning 08:00, evening 18:00, weekly Sun 20:00, synthesis 03:00 UB");
+    } else {
+      console.log("[scheduler] Started — morning 08:00, evening 18:00, weekly Sun 20:00 UB");
+    }
   }
 
   /**
@@ -169,9 +186,12 @@ export class Scheduler {
   }
 
   /**
-   * Manually trigger a briefing (for testing via API).
+   * Manually trigger a briefing or synthesis (for testing via API).
    */
-  async trigger(type: BriefingType): Promise<{ status: string; content?: string; error?: string }> {
+  async trigger(type: SchedulerJobType): Promise<{ status: string; content?: string; error?: string }> {
+    if (type === "synthesis") {
+      return this.runSynthesis();
+    }
     return this.runBriefing(type);
   }
 
@@ -181,7 +201,7 @@ export class Scheduler {
   getStatus(): {
     running: boolean;
     timezone: string;
-    jobs: { type: BriefingType; lastRun: string | null; lastResult: string | null; lastDurationMs: number | null }[];
+    jobs: { type: SchedulerJobType; lastRun: string | null; lastResult: string | null; lastDurationMs: number | null }[];
   } {
     return {
       running: this.running,
@@ -196,7 +216,39 @@ export class Scheduler {
   }
 
   /**
-   * Core briefing logic: check memories → generate → send.
+   * Run the memory synthesizer (dedup, connect, decay, promote).
+   */
+  private async runSynthesis(): Promise<{ status: string; content?: string; error?: string }> {
+    const startTime = Date.now();
+    const job = this.jobs.get("synthesis")!;
+
+    if (!this.config.synthesizer) {
+      return { status: "skipped", error: "No synthesizer configured" };
+    }
+
+    try {
+      const report = await this.config.synthesizer.run();
+      const summary = `Synthesis complete: ${report.deduped} deduped, ${report.connected} connected, ${report.decayed} decayed, ${report.promoted} promoted`;
+
+      job.lastRun = new Date();
+      job.lastResult = "sent";
+      job.lastDurationMs = Date.now() - startTime;
+
+      return { status: "sent", content: summary };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] Synthesis failed: ${errMsg}`);
+
+      job.lastRun = new Date();
+      job.lastResult = "error";
+      job.lastDurationMs = Date.now() - startTime;
+
+      return { status: "error", error: errMsg };
+    }
+  }
+
+  /**
+   * Core briefing logic: check memories → generate insights → generate → send.
    */
   private async runBriefing(type: BriefingType): Promise<{ status: string; content?: string; error?: string }> {
     const startTime = Date.now();
@@ -274,6 +326,19 @@ export class Scheduler {
         }
       }
 
+      // Generate insights from memory patterns
+      let insightsSection = "";
+      if (this.config.insightGenerator) {
+        try {
+          const insights = await this.config.insightGenerator.generate();
+          if (insights.length > 0) {
+            insightsSection = `\n\n## Brain Insights\n\n${insights.map((i) => `- ${i.text}`).join("\n")}`;
+          }
+        } catch (err) {
+          console.error("[scheduler] Insight generation failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
       const prompt = `${PROMPTS[type]}
 
 ## Recent Memories (${recentMemories.length} items)
@@ -283,7 +348,7 @@ ${memoriesText}
 ## Stats
 - Total memories: ${stats.totalMemories}
 - New in last 24h: ${stats.recentCount}
-- Top tags: ${stats.topTags.map((t) => `${t.tag}(${t.count})`).join(", ") || "none"}${notionSection}${gmailSection}${calendarSection}
+- Top tags: ${stats.topTags.map((t) => `${t.tag}(${t.count})`).join(", ") || "none"}${notionSection}${gmailSection}${calendarSection}${insightsSection}
 
 Generate the ${type} briefing now.`;
 

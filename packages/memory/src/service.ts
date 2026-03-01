@@ -11,7 +11,7 @@ import { embed, embedSingle, DIMENSIONS } from "./embedding.js";
 export interface MemoryInput {
   content: string;
   type?: "fact" | "decision" | "pattern" | "preference" | "event";
-  source?: "conversation" | "manual" | "extraction";
+  source?: "conversation" | "manual" | "extraction" | "synthesis";
   sourceThreadId?: string;
   importance?: number;
   tags?: string[];
@@ -212,6 +212,219 @@ export class MemoryService {
         lastAccessedAt: r.last_accessed_at,
       })),
     };
+  }
+
+  // ============================================================
+  // Intelligence methods (for Synthesizer + InsightGenerator)
+  // ============================================================
+
+  /**
+   * Find memories similar to a given memory by its embedding.
+   * Used by Synthesizer for dedup and clustering.
+   */
+  async findSimilarToMemory(
+    memoryId: string,
+    threshold = 0.80,
+    limit = 10
+  ): Promise<(MemoryResult & { targetId: string })[]> {
+    const results = await this.db.execute(sql`
+      WITH target AS (
+        SELECT embedding FROM memories WHERE id = ${memoryId}
+      )
+      SELECT
+        m.id, m.content, m.type, m.importance, m.confidence,
+        m.tags, m.created_at,
+        1 - (m.embedding <=> t.embedding) as similarity
+      FROM memories m, target t
+      WHERE m.id != ${memoryId}
+        AND m.confidence > 0.1
+        AND 1 - (m.embedding <=> t.embedding) > ${threshold}
+      ORDER BY m.embedding <=> t.embedding
+      LIMIT ${limit}
+    `);
+
+    return (results as any[]).map((r: any) => ({
+      id: r.id,
+      content: r.content,
+      type: r.type,
+      importance: r.importance,
+      confidence: r.confidence,
+      similarity: r.similarity,
+      createdAt: r.created_at,
+      tags: r.tags,
+      targetId: memoryId,
+    }));
+  }
+
+  /**
+   * Batch adjust confidence for a set of memories.
+   * delta can be negative (decay) or positive (restore).
+   */
+  async adjustConfidence(ids: string[], delta: number): Promise<void> {
+    if (ids.length === 0) return;
+    const idList = ids.map((id) => `'${id}'`).join(",");
+    await this.db.execute(sql.raw(`
+      UPDATE memories
+      SET confidence = GREATEST(0, LEAST(1, confidence + ${delta})),
+          updated_at = now()
+      WHERE id IN (${idList})
+    `));
+  }
+
+  /**
+   * Batch adjust importance for a set of memories with a cap.
+   */
+  async adjustImportance(ids: string[], delta: number, cap = 1.0): Promise<void> {
+    if (ids.length === 0) return;
+    const idList = ids.map((id) => `'${id}'`).join(",");
+    await this.db.execute(sql.raw(`
+      UPDATE memories
+      SET importance = GREATEST(0, LEAST(${cap}, importance + ${delta})),
+          updated_at = now()
+      WHERE id IN (${idList})
+    `));
+  }
+
+  /**
+   * Get stale memories: not accessed recently, low importance.
+   * Candidates for confidence decay.
+   */
+  async getStaleMemories(daysUnaccessed = 30, maxImportance = 0.5): Promise<MemoryResult[]> {
+    const results = await this.db.execute(sql`
+      SELECT id, content, type, importance, confidence, tags, created_at
+      FROM memories
+      WHERE confidence > 0.1
+        AND importance < ${maxImportance}
+        AND (last_accessed_at IS NULL OR last_accessed_at < now() - ${daysUnaccessed + ' days'}::interval)
+        AND created_at < now() - ${daysUnaccessed + ' days'}::interval
+      ORDER BY importance ASC
+      LIMIT 50
+    `);
+
+    return (results as any[]).map((r: any) => ({
+      id: r.id, content: r.content, type: r.type,
+      importance: r.importance, confidence: r.confidence,
+      similarity: 1, createdAt: r.created_at, tags: r.tags,
+    }));
+  }
+
+  /**
+   * Get frequently accessed memories. Candidates for importance promotion.
+   */
+  async getFrequentlyAccessed(minAccessCount = 5, limit = 20): Promise<MemoryResult[]> {
+    const results = await this.db.execute(sql`
+      SELECT id, content, type, importance, confidence, tags, created_at, access_count
+      FROM memories
+      WHERE access_count >= ${minAccessCount}
+        AND confidence > 0.1
+        AND importance < 1.0
+      ORDER BY access_count DESC
+      LIMIT ${limit}
+    `);
+
+    return (results as any[]).map((r: any) => ({
+      id: r.id, content: r.content, type: r.type,
+      importance: r.importance, confidence: r.confidence,
+      similarity: 1, createdAt: r.created_at, tags: r.tags,
+    }));
+  }
+
+  /**
+   * Get memory creation count over a period.
+   */
+  async getCreationRate(days = 7): Promise<number> {
+    const result = await this.db.execute(sql`
+      SELECT count(*)::int as count
+      FROM memories
+      WHERE created_at > now() - ${days + ' days'}::interval
+    `);
+    return (result as any[])[0]?.count ?? 0;
+  }
+
+  /**
+   * Compare tag frequency between two time periods.
+   */
+  async getTagTrends(
+    recentDays = 7,
+    previousDays = 7
+  ): Promise<{ tag: string; recent: number; previous: number }[]> {
+    const results = await this.db.execute(sql`
+      WITH recent_tags AS (
+        SELECT tag, count(*)::int as cnt
+        FROM memories, jsonb_array_elements_text(COALESCE(tags, '[]'::jsonb)) as tag
+        WHERE created_at > now() - ${recentDays + ' days'}::interval
+        GROUP BY tag
+      ),
+      previous_tags AS (
+        SELECT tag, count(*)::int as cnt
+        FROM memories, jsonb_array_elements_text(COALESCE(tags, '[]'::jsonb)) as tag
+        WHERE created_at BETWEEN now() - ${(recentDays + previousDays) + ' days'}::interval
+                              AND now() - ${recentDays + ' days'}::interval
+        GROUP BY tag
+      )
+      SELECT
+        COALESCE(r.tag, p.tag) as tag,
+        COALESCE(r.cnt, 0) as recent,
+        COALESCE(p.cnt, 0) as previous
+      FROM recent_tags r
+      FULL OUTER JOIN previous_tags p ON r.tag = p.tag
+      ORDER BY COALESCE(r.cnt, 0) DESC
+      LIMIT 15
+    `);
+
+    return (results as any[]).map((r: any) => ({
+      tag: r.tag,
+      recent: r.recent,
+      previous: r.previous,
+    }));
+  }
+
+  /**
+   * Find decisions that were made but never revisited.
+   */
+  async getStalledDecisions(minAgeDays = 7, maxAccess = 2): Promise<MemoryResult[]> {
+    const results = await this.db.execute(sql`
+      SELECT id, content, type, importance, confidence, tags, created_at
+      FROM memories
+      WHERE type = 'decision'
+        AND confidence > 0.1
+        AND access_count < ${maxAccess}
+        AND created_at < now() - ${minAgeDays + ' days'}::interval
+      ORDER BY importance DESC
+      LIMIT 10
+    `);
+
+    return (results as any[]).map((r: any) => ({
+      id: r.id, content: r.content, type: r.type,
+      importance: r.importance, confidence: r.confidence,
+      similarity: 1, createdAt: r.created_at, tags: r.tags,
+    }));
+  }
+
+  /**
+   * Find high-value memories that are never retrieved.
+   */
+  async getNeglectedHighValue(
+    minImportance = 0.7,
+    maxAccess = 0,
+    minAgeDays = 14
+  ): Promise<MemoryResult[]> {
+    const results = await this.db.execute(sql`
+      SELECT id, content, type, importance, confidence, tags, created_at
+      FROM memories
+      WHERE importance >= ${minImportance}
+        AND confidence > 0.1
+        AND access_count <= ${maxAccess}
+        AND created_at < now() - ${minAgeDays + ' days'}::interval
+      ORDER BY importance DESC
+      LIMIT 10
+    `);
+
+    return (results as any[]).map((r: any) => ({
+      id: r.id, content: r.content, type: r.type,
+      importance: r.importance, confidence: r.confidence,
+      similarity: 1, createdAt: r.created_at, tags: r.tags,
+    }));
   }
 
   async getStats(): Promise<{

@@ -1,1 +1,1 @@
-export { Scheduler, type SchedulerConfig, type BriefingType } from "./scheduler.js";
+export { Scheduler, type SchedulerConfig, type BriefingType, type SchedulerJobType } from "./scheduler.js";

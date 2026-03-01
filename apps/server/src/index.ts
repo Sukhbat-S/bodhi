@@ -21,7 +21,7 @@ import { Agent, ContextEngine, type ConversationMessage } from "@seneca/core";
 import { Bridge } from "@seneca/bridge";
 import { getDb } from "@seneca/db";
 import { sql } from "drizzle-orm";
-import { MemoryService, MemoryExtractor, MemoryContextProvider } from "@seneca/memory";
+import { MemoryService, MemoryExtractor, MemoryContextProvider, MemorySynthesizer, InsightGenerator } from "@seneca/memory";
 import { TelegramBot } from "@seneca/channel-telegram";
 import { Scheduler } from "@seneca/scheduler";
 import { NotionService, NotionContextProvider } from "@seneca/notion";
@@ -84,7 +84,9 @@ async function main() {
   const memoryService = new MemoryService(db, config.VOYAGE_API_KEY);
   const memoryExtractor = new MemoryExtractor(memoryService, bridge);
   const memoryProvider = new MemoryContextProvider(memoryService);
-  console.log("  Memory: initialized (Voyage AI embeddings)");
+  const memorySynthesizer = new MemorySynthesizer(memoryService, bridge);
+  const insightGenerator = new InsightGenerator(memoryService);
+  console.log("  Memory: initialized (Voyage AI embeddings + synthesizer + insights)");
 
   // 6. Initialize Notion (optional — workspace context)
   let notionService: NotionService | null = null;
@@ -194,6 +196,8 @@ async function main() {
     notion: notionService,
     gmail: gmailService,
     calendar: calendarService,
+    synthesizer: memorySynthesizer,
+    insightGenerator,
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings)");
 
@@ -488,9 +492,9 @@ async function main() {
   });
 
   app.post("/api/scheduler/trigger", async (c) => {
-    const body = await c.req.json<{ type: "morning" | "evening" | "weekly" }>();
-    if (!body.type || !["morning", "evening", "weekly"].includes(body.type)) {
-      return c.json({ error: "type must be 'morning', 'evening', or 'weekly'" }, 400);
+    const body = await c.req.json<{ type: "morning" | "evening" | "weekly" | "synthesis" }>();
+    if (!body.type || !["morning", "evening", "weekly", "synthesis"].includes(body.type)) {
+      return c.json({ error: "type must be 'morning', 'evening', 'weekly', or 'synthesis'" }, 400);
     }
     const result = await scheduler.trigger(body.type);
     return c.json(result);

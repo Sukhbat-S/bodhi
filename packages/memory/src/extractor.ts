@@ -84,26 +84,112 @@ Assistant response: ${assistantResponse}`;
 
       if (!Array.isArray(extracted) || extracted.length === 0) return;
 
-      // Store each extracted memory
+      // Store each extracted memory and collect IDs for cross-referencing
+      const storedIds: string[] = [];
       for (const memory of extracted) {
-        await this.memoryService.store({
+        const id = await this.memoryService.store({
           content: memory.content,
           type: memory.type,
           source: "extraction",
           sourceThreadId: threadId,
           importance: memory.importance,
         });
+        storedIds.push(id);
       }
 
       console.log(
         `[memory] Extracted ${extracted.length} memories from conversation`
       );
+
+      // Cross-session reasoning: check if new memories connect to existing ones
+      this.crossReference(extracted).catch((err) => {
+        console.error("[memory] Cross-reference failed:", err instanceof Error ? err.message : err);
+      });
     } catch (error) {
       // Non-fatal — don't break the conversation flow
       console.error(
         "[memory] Extraction failed:",
         error instanceof Error ? error.message : error
       );
+    }
+  }
+
+  /**
+   * Cross-session reasoning: for each new memory, check if similar memories
+   * exist from different sessions/days. If a theme appears 3+ times across
+   * 2+ different days, generate a pattern memory.
+   */
+  private async crossReference(
+    newMemories: Array<{ content: string; type: MemoryInput["type"]; importance: number }>
+  ): Promise<void> {
+    for (const memory of newMemories) {
+      const similar = await this.memoryService.retrieve(memory.content, 6);
+
+      // Filter to memories from different days than today
+      const today = new Date().toISOString().slice(0, 10);
+      const fromOtherDays = similar.filter(
+        (m) => m.createdAt.toISOString().slice(0, 10) !== today
+      );
+
+      // Need 2+ similar memories from other days (+ this new one = 3+ total)
+      if (fromOtherDays.length < 2) continue;
+
+      const uniqueDays = new Set(
+        fromOtherDays.map((m) => m.createdAt.toISOString().slice(0, 10))
+      );
+      if (uniqueDays.size < 2) continue;
+
+      // Check we haven't already generated a cross-session pattern for this theme
+      const existingPatterns = await this.memoryService.retrieve(
+        `recurring theme: ${memory.content}`,
+        3
+      );
+      const alreadySynthesized = existingPatterns.some(
+        (p) => p.tags?.includes("cross-session") && p.similarity > 0.85
+      );
+      if (alreadySynthesized) continue;
+
+      // Generate cross-session pattern via Bridge
+      const clusterText = [memory, ...fromOtherDays.slice(0, 4)]
+        .map((m, i) => `${i + 1}. ${m.content}`)
+        .join("\n");
+
+      try {
+        const prompt = `<system>
+You detect recurring themes across multiple conversations/sessions.
+Given these related memories from different days, write ONE concise observation about the recurring pattern.
+
+Rules:
+- One sentence, max 40 words
+- Start with "Recurring theme:"
+- Be specific about what keeps coming up
+- Do NOT use any tools
+- Respond with ONLY the observation text
+</system>
+
+Memories spanning ${uniqueDays.size + 1} days:
+${clusterText}`;
+
+        const task = await this.backend.execute(prompt, {
+          model: "sonnet",
+          tools: "",
+          noSessionPersistence: true,
+        });
+
+        const pattern = (task.result || "").trim();
+        if (pattern && pattern.length > 10 && pattern.length < 200) {
+          await this.memoryService.store({
+            content: pattern,
+            type: "pattern",
+            source: "synthesis",
+            importance: 0.7,
+            tags: ["auto-synthesis", "cross-session"],
+          });
+          console.log(`[memory] Cross-session pattern: "${pattern}"`);
+        }
+      } catch {
+        // Non-fatal
+      }
     }
   }
 }

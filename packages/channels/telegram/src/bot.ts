@@ -27,6 +27,20 @@ interface CalendarServiceLike {
   getTodayEvents(): Promise<{ summary: string; start: string; end: string; isAllDay: boolean; location?: string }[]>;
 }
 
+interface ConversationServiceLike {
+  createThread(channel: "telegram" | "web" | "cli"): Promise<{ id: string }>;
+  getTurns(threadId: string): Promise<{ role: "user" | "assistant"; content: string }[]>;
+  addTurn(threadId: string, turn: {
+    role: "user" | "assistant";
+    content: string;
+    channel: "telegram" | "web" | "cli";
+    modelUsed?: string;
+    durationMs?: number;
+  }): Promise<void>;
+  updateTitle(threadId: string, title: string): Promise<void>;
+  touchThread(threadId: string): Promise<void>;
+}
+
 interface BotConfig {
   token: string;
   allowedUserId: string;
@@ -37,6 +51,7 @@ interface BotConfig {
   memoryExtractor: MemoryExtractor;
   gmailService?: GmailServiceLike;
   calendarService?: CalendarServiceLike;
+  conversationService?: ConversationServiceLike;
   groqApiKey?: string;
 }
 
@@ -50,7 +65,11 @@ export class TelegramBot {
   private memoryExtractor: MemoryExtractor;
   private gmailService?: GmailServiceLike;
   private calendarService?: CalendarServiceLike;
+  private conversationService?: ConversationServiceLike;
   private groq: Groq | null;
+  private currentThreadId: string | null = null;
+  private lastMessageAt: number = 0;
+  private readonly THREAD_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
   constructor(config: BotConfig) {
     this.bot = new Telegraf(config.token);
@@ -62,6 +81,7 @@ export class TelegramBot {
     this.memoryExtractor = config.memoryExtractor;
     this.gmailService = config.gmailService;
     this.calendarService = config.calendarService;
+    this.conversationService = config.conversationService;
     this.groq = config.groqApiKey ? new Groq({ apiKey: config.groqApiKey }) : null;
 
     this.setupMiddleware();
@@ -508,12 +528,37 @@ export class TelegramBot {
     return transcription.text;
   }
 
+  private async resolveThread(): Promise<string | undefined> {
+    if (!this.conversationService) return undefined;
+
+    const now = Date.now();
+    const elapsed = now - this.lastMessageAt;
+
+    // Start new thread if: no current thread, or >30min inactivity
+    if (!this.currentThreadId || elapsed > this.THREAD_TIMEOUT_MS) {
+      const thread = await this.conversationService.createThread("telegram");
+      this.currentThreadId = thread.id;
+    }
+
+    this.lastMessageAt = now;
+    return this.currentThreadId;
+  }
+
+  private async loadHistory(): Promise<{ role: "user" | "assistant"; content: string }[]> {
+    if (!this.conversationService || !this.currentThreadId) return [];
+    return this.conversationService.getTurns(this.currentThreadId);
+  }
+
   private async handleChat(ctx: Context, message: string, imagePath?: string) {
     const statusMsg = await ctx.reply(imagePath ? "Viewing image..." : "...");
 
     try {
       // Retrieve relevant context (memories)
       const context = await this.contextEngine.gather(message);
+
+      // Resolve thread + load history for persistence
+      const threadId = await this.resolveThread();
+      const history = threadId ? await this.loadHistory() : undefined;
 
       let accumulated = "";
 
@@ -523,7 +568,7 @@ export class TelegramBot {
         (chunk) => {
           accumulated += chunk;
         },
-        undefined, // history — use internal
+        history,
         imagePath
       );
 
@@ -549,6 +594,24 @@ export class TelegramBot {
           );
         } catch {
           await ctx.reply(displayText);
+        }
+      }
+
+      // Persist turns to database (fire-and-forget)
+      if (this.conversationService && threadId) {
+        this.conversationService.addTurn(threadId, {
+          role: "user", content: message, channel: "telegram",
+        }).catch(() => {});
+        this.conversationService.addTurn(threadId, {
+          role: "assistant", content: response.content, channel: "telegram",
+          modelUsed: response.model, durationMs: response.durationMs,
+        }).catch(() => {});
+        this.conversationService.touchThread(threadId).catch(() => {});
+
+        // Auto-title on first message in thread
+        if (history && history.length === 0) {
+          const title = message.slice(0, 60) + (message.length > 60 ? "..." : "");
+          this.conversationService.updateTitle(threadId, title).catch(() => {});
         }
       }
 

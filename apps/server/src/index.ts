@@ -183,6 +183,7 @@ async function main() {
     memoryExtractor,
     gmailService: gmailService || undefined,
     calendarService: calendarService || undefined,
+    conversationService,
     groqApiKey: config.GROQ_API_KEY,
   });
   console.log(`  Telegram: configured (user ${config.TELEGRAM_ALLOWED_USER_ID})`);

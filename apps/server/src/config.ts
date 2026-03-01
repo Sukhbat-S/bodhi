@@ -35,6 +35,19 @@ const envSchema = z.object({
   GOOGLE_REDIRECT_URI: z.string().optional(),
   GOOGLE_TOKEN_PATH: z.string().optional(),
 
+  // GitHub (optional — enables commit/PR/issue tracking)
+  GITHUB_TOKEN: z.string().optional(),
+  GITHUB_REPOS: z.string().optional(), // comma-separated "owner/repo" list
+
+  // Vercel (optional — enables deployment tracking)
+  VERCEL_TOKEN: z.string().optional(),
+  VERCEL_PROJECT_ID: z.string().optional(),
+  VERCEL_TEAM_ID: z.string().optional(),
+
+  // Supabase Awareness (optional — project health monitoring)
+  SUPABASE_ACCESS_TOKEN: z.string().optional(),
+  SUPABASE_PROJECT_REF: z.string().optional(),
+
   // Server
   PORT: z.coerce.number().default(3000),
   NODE_ENV: z

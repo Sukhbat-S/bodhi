@@ -26,6 +26,9 @@ export interface StatusResponse {
   notion?: string;
   gmail?: string;
   calendar?: string;
+  github?: string;
+  vercel?: string;
+  supabase?: string;
   scheduler?: string;
   uptime: number;
   channels: Record<string, string>;
@@ -321,6 +324,113 @@ export function searchNotion(q: string) {
   return request<{ results: { title: string; url: string; type: string }[] }>(
     `/notion/search?q=${encodeURIComponent(q)}`
   );
+}
+
+// --- GitHub ---
+
+export interface GitHubCommit {
+  sha: string;
+  message: string;
+  author: string;
+  date: string;
+  repo: string;
+  url: string;
+}
+
+export interface GitHubPR {
+  number: number;
+  title: string;
+  state: string;
+  author: string;
+  repo: string;
+  createdAt: string;
+  updatedAt: string;
+  url: string;
+  additions: number;
+  deletions: number;
+  draft: boolean;
+}
+
+export interface GitHubIssue {
+  number: number;
+  title: string;
+  state: string;
+  author: string;
+  repo: string;
+  createdAt: string;
+  labels: string[];
+  url: string;
+}
+
+export function getGitHubStatus() {
+  return request<{ connected: boolean; reason?: string; repos?: string[] }>("/github/status");
+}
+
+export function getGitHubActivity() {
+  return request<{ commits: GitHubCommit[]; prs: GitHubPR[]; issues: GitHubIssue[] }>(
+    "/github/activity"
+  );
+}
+
+export function getGitHubCommits(limit = 20) {
+  return request<{ commits: GitHubCommit[] }>(`/github/commits?limit=${limit}`);
+}
+
+export function getGitHubPRs() {
+  return request<{ prs: GitHubPR[] }>("/github/prs");
+}
+
+export function getGitHubIssues(limit = 20) {
+  return request<{ issues: GitHubIssue[] }>(`/github/issues?limit=${limit}`);
+}
+
+// --- Vercel ---
+
+export interface VercelDeployment {
+  id: string;
+  name: string;
+  url: string;
+  state: string;
+  createdAt: string;
+  readyAt: string | null;
+  buildDuration: number | null;
+  source: string;
+  target: string | null;
+  meta: { branch?: string; commitSha?: string; commitMessage?: string } | null;
+  inspectorUrl: string;
+}
+
+export function getVercelStatus() {
+  return request<{ connected: boolean; reason?: string; project?: string }>("/vercel/status");
+}
+
+export function getVercelDeployments(limit = 20) {
+  return request<{ deployments: VercelDeployment[] }>(`/vercel/deployments?limit=${limit}`);
+}
+
+// --- Supabase ---
+
+export interface SupabaseProjectHealth {
+  ref: string;
+  name: string;
+  status: string;
+  region: string;
+  createdAt: string;
+  dbVersion: string;
+}
+
+export interface SupabaseTableInfo {
+  schema: string;
+  name: string;
+  rowCount: number;
+}
+
+export function getSupabaseStatus() {
+  return request<{ connected: boolean; reason?: string }>("/supabase/status");
+}
+
+export function getSupabaseHealth() {
+  return request<{ health: SupabaseProjectHealth; tables: SupabaseTableInfo[] }>("/supabase/health");
 }
 
 // --- Chat ---

@@ -20,6 +20,9 @@ COPY packages/notion/package.json packages/notion/
 COPY packages/google/package.json packages/google/
 COPY packages/knowledge/package.json packages/knowledge/
 COPY packages/mcp-server/package.json packages/mcp-server/
+COPY packages/github/package.json packages/github/
+COPY packages/vercel/package.json packages/vercel/
+COPY packages/supabase-awareness/package.json packages/supabase-awareness/
 COPY packages/channels/telegram/package.json packages/channels/telegram/
 COPY apps/server/package.json apps/server/
 COPY apps/dashboard/package.json apps/dashboard/

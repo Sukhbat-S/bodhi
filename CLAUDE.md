@@ -12,23 +12,26 @@ npm run dev -w @seneca/dashboard  # Dashboard on :5173
 
 ## Architecture
 
-Monorepo with npm workspaces. 11 packages, all TypeScript ESM.
+Monorepo with npm workspaces. 14 packages, all TypeScript ESM.
 
 ```
 packages/
-  core/         — Agent + ContextEngine (AIBackend interface)
-  bridge/       — Claude Code CLI subprocess ($0 via Max subscription)
-  db/           — Drizzle ORM + Supabase Postgres (pgvector)
-  memory/       — MemoryService + MemoryExtractor + MemoryContextProvider
-  google/       — Gmail + Calendar (shared OAuth2, read-only)
-  knowledge/    — Notion knowledge base context provider
-  mcp-server/   — MCP server for Claude Code integration (8 tools)
-  scheduler/    — node-cron proactive briefings (morning/evening/weekly)
+  core/                — Agent + ContextEngine (AIBackend interface)
+  bridge/              — Claude Code CLI subprocess ($0 via Max subscription)
+  db/                  — Drizzle ORM + Supabase Postgres (pgvector)
+  memory/              — MemoryService + MemoryExtractor + MemoryContextProvider
+  google/              — Gmail + Calendar (shared OAuth2, read-only)
+  knowledge/           — Notion knowledge base context provider
+  github/              — GitHub activity tracking (commits, PRs, issues)
+  vercel/              — Vercel deployment tracking
+  supabase-awareness/  — Supabase project health monitoring
+  mcp-server/          — MCP server for Claude Code integration (8 tools)
+  scheduler/           — node-cron proactive briefings (morning/evening/weekly)
   channels/
-    telegram/   — Telegraf bot (single-user, allowedUserId gated)
+    telegram/          — Telegraf bot (single-user, allowedUserId gated)
 apps/
-  server/       — Hono API (port 4000) + all service wiring
-  dashboard/    — React 19 + Vite 6 + Tailwind 3 SPA (port 5173)
+  server/              — Hono API (port 4000) + all service wiring
+  dashboard/           — React 19 + Vite 6 + Tailwind 3 SPA (port 5173)
 ```
 
 ## Key Patterns
@@ -41,7 +44,7 @@ apps/
 - Scheduler: non-blocking start (Telegraf `launch()` never resolves)
 - `app.onError()` global handler returns JSON errors, never HTML
 - **New integration pattern**: optional init gated by env var (see Notion/Google in `index.ts`)
-- **Context providers**: memory=priority 10, notion=8, gmail/calendar=7. Keyword-based relevance.
+- **Context providers**: memory=priority 10, projects=9, notion=8, gmail/calendar=7, github/vercel/supabase=6. Keyword-based relevance.
 - **Briefing prompts**: must explicitly instruct the agent to include each data section, or it may ignore context
 - **Google OAuth tokens**: stored in `.google-token.json` (gitignored), auto-refreshes
 - **Conversation history**: Agent has no DB dependency — server passes `history` array to `chat()`/`stream()`. Both web chat and Telegram persist via ConversationService.
@@ -53,6 +56,10 @@ apps/
 - **InsightGenerator**: pure SQL pattern detection — tag trends, stalled decisions, activity rates, neglected knowledge. Feeds into briefing prompts.
 - **Cross-session reasoning**: MemoryExtractor.crossReference() runs after each extraction, detects recurring themes across sessions, auto-creates pattern memories tagged `["auto-synthesis", "cross-session"]`
 - **Memory source "synthesis"**: auto-generated memories are tagged with source="synthesis" to distinguish from manual/extraction
+- **GitHub tracking**: plain `fetch` with Bearer token (no octokit). Auto-discovers repos via `/user/repos` if `GITHUB_REPOS` not set. Briefings include open PRs, recent commits, issues.
+- **Vercel tracking**: plain `fetch` with Bearer token. Optional `teamId` for team-scoped queries. Tracks deployment state (READY/BUILDING/ERROR), build duration, commit refs.
+- **Supabase awareness**: Management API at `api.supabase.com`. Monitors project health status, table row counts. Briefings flag non-healthy status.
+- **Auto-capture on commit**: `/commit` command now auto-stores event/decision/pattern memories after non-trivial commits. Checks for duplicates via `search_memories` first.
 
 ## Dev Workflow
 
@@ -73,6 +80,13 @@ VOYAGE_API_KEY=
 GOOGLE_CLIENT_ID=        # optional — enables Gmail + Calendar
 GOOGLE_CLIENT_SECRET=    # optional
 GOOGLE_REDIRECT_URI=     # optional (defaults to localhost:4000 callback)
+GITHUB_TOKEN=            # optional — enables GitHub activity tracking
+GITHUB_REPOS=            # optional — comma-separated "owner/repo" (auto-discovers if blank)
+VERCEL_TOKEN=            # optional — enables Vercel deployment tracking
+VERCEL_PROJECT_ID=       # optional — specific project (lists all if blank)
+VERCEL_TEAM_ID=          # optional — team scope
+SUPABASE_ACCESS_TOKEN=   # optional — enables Supabase health monitoring
+SUPABASE_PROJECT_REF=    # optional — project ref ID
 PORT=4000
 ```
 
@@ -110,6 +124,15 @@ PORT=4000
 | `/api/conversations` | GET | List threads (paginated, newest first) |
 | `/api/conversations/:id` | GET | Get thread with all turns |
 | `/api/conversations/:id` | DELETE | Delete thread (cascade) |
+| `/api/github/status` | GET | GitHub connection status |
+| `/api/github/activity` | GET | Commits + PRs + issues combined |
+| `/api/github/commits` | GET | Recent commits across repos |
+| `/api/github/prs` | GET | Open pull requests |
+| `/api/github/issues` | GET | Open issues |
+| `/api/vercel/status` | GET | Vercel connection status |
+| `/api/vercel/deployments` | GET | Recent deployments |
+| `/api/supabase/status` | GET | Supabase connection status |
+| `/api/supabase/health` | GET | Project health + table stats |
 
 ## Session Workflow
 
@@ -135,7 +158,7 @@ Slash commands, subagents, hooks, and permissions live in `.claude/`.
 | `/recall` | `/recall [query]` | Quick memory search (e.g., `/recall deployment patterns`) |
 | `/briefing` | `/briefing morning` | Trigger morning/evening/weekly briefing |
 | `/deploy` | `/deploy` | Build all packages, restart server, verify status |
-| `/commit` | `/commit` | Stage + commit with Co-Authored-By trailer |
+| `/commit` | `/commit` | Stage + commit with Co-Authored-By trailer + auto-capture learnings |
 | `/status` | `/status` | Quick health check (API + Gmail + Calendar) |
 
 ### Subagents (`.claude/agents/`)
@@ -213,7 +236,7 @@ Built-in `setInterval` pings database every 3 days to prevent free-tier auto-pau
 ## Build
 
 ```bash
-npm run build          # builds all 11 packages
+npm run build          # builds all 14 packages
 npm run build -w @seneca/scheduler  # build single package
 ```
 
@@ -232,3 +255,5 @@ npm run build -w @seneca/scheduler  # build single package
 11. Dashboard on VPS + Quality — Hono serves SPA, memory quality management ✅
 12. Email & Calendar Pages — Gmail inbox + Calendar dashboard (zero backend changes) ✅
 13. Telegram Persistence — Conversation history persisted to DB, 30-min thread rotation ✅
+14. Chat UX + Notion Dashboard — Streaming chat, Notion tasks/sessions page ✅
+15. Awareness Expansion — GitHub, Vercel, Supabase monitoring + auto-capture on commit ✅

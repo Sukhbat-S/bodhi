@@ -30,6 +30,18 @@ interface CalendarDataSource {
   getBriefingSummary(type: "morning" | "evening"): Promise<string>;
 }
 
+interface GitHubDataSource {
+  getBriefingSummary(): Promise<string>;
+}
+
+interface VercelDataSource {
+  getBriefingSummary(): Promise<string>;
+}
+
+interface SupabaseDataSource {
+  getBriefingSummary(): Promise<string>;
+}
+
 export interface SchedulerConfig {
   agent: Agent;
   telegram: TelegramSender;
@@ -39,6 +51,9 @@ export interface SchedulerConfig {
   notion?: NotionDataSource | null;
   gmail?: GmailDataSource | null;
   calendar?: CalendarDataSource | null;
+  github?: GitHubDataSource | null;
+  vercel?: VercelDataSource | null;
+  supabase?: SupabaseDataSource | null;
   synthesizer?: MemorySynthesizer | null;
   insightGenerator?: InsightGenerator | null;
 }
@@ -69,6 +84,7 @@ Rules:
 - No filler, no motivational fluff
 - Under 200 words
 - If Gmail or Calendar data is provided below, you MUST include it in your briefing
+- If GitHub, Vercel, or Supabase data is provided, mention notable activity (open PRs, failed deploys, health issues)
 - If no calendar/email data is present, skip those sections silently
 - Use Markdown formatting`,
 
@@ -326,6 +342,45 @@ export class Scheduler {
         }
       }
 
+      // Fetch GitHub activity
+      let githubSection = "";
+      if (this.config.github) {
+        try {
+          const githubSummary = await this.config.github.getBriefingSummary();
+          if (githubSummary) {
+            githubSection = `\n\n## GitHub Activity\n\n${githubSummary}`;
+          }
+        } catch (err) {
+          console.error("[scheduler] GitHub data fetch failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
+      // Fetch Vercel deployments
+      let vercelSection = "";
+      if (this.config.vercel) {
+        try {
+          const vercelSummary = await this.config.vercel.getBriefingSummary();
+          if (vercelSummary) {
+            vercelSection = `\n\n## Vercel Deployments\n\n${vercelSummary}`;
+          }
+        } catch (err) {
+          console.error("[scheduler] Vercel data fetch failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
+      // Fetch Supabase health
+      let supabaseSection = "";
+      if (this.config.supabase) {
+        try {
+          const supabaseSummary = await this.config.supabase.getBriefingSummary();
+          if (supabaseSummary) {
+            supabaseSection = `\n\n## Supabase Infrastructure\n\n${supabaseSummary}`;
+          }
+        } catch (err) {
+          console.error("[scheduler] Supabase data fetch failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
       // Generate insights from memory patterns
       let insightsSection = "";
       if (this.config.insightGenerator) {
@@ -348,7 +403,7 @@ ${memoriesText}
 ## Stats
 - Total memories: ${stats.totalMemories}
 - New in last 24h: ${stats.recentCount}
-- Top tags: ${stats.topTags.map((t) => `${t.tag}(${t.count})`).join(", ") || "none"}${notionSection}${gmailSection}${calendarSection}${insightsSection}
+- Top tags: ${stats.topTags.map((t) => `${t.tag}(${t.count})`).join(", ") || "none"}${notionSection}${gmailSection}${calendarSection}${githubSection}${vercelSection}${supabaseSection}${insightsSection}
 
 Generate the ${type} briefing now.`;
 

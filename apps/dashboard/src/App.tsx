@@ -7,6 +7,9 @@ import InboxPage from "./pages/InboxPage";
 import CalendarPage from "./pages/CalendarPage";
 import ChatPage from "./pages/ChatPage";
 import NotionPage from "./pages/NotionPage";
+import GitHubPage from "./pages/GitHubPage";
+import VercelPage from "./pages/VercelPage";
+import SupabasePage from "./pages/SupabasePage";
 
 export default function App() {
   return (
@@ -20,6 +23,9 @@ export default function App() {
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/notion" element={<NotionPage />} />
+          <Route path="/github" element={<GitHubPage />} />
+          <Route path="/vercel" element={<VercelPage />} />
+          <Route path="/supabase" element={<SupabasePage />} />
           <Route path="/chat" element={<ChatPage />} />
         </Routes>
       </main>

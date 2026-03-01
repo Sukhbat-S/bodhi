@@ -34,6 +34,9 @@ import {
   CalendarContextProvider,
 } from "@seneca/google";
 import { ProjectKnowledgeProvider } from "@seneca/knowledge";
+import { GitHubService, GitHubContextProvider } from "@seneca/github";
+import { VercelService, VercelContextProvider } from "@seneca/vercel";
+import { SupabaseAwarenessService, SupabaseAwarenessProvider } from "@seneca/supabase-awareness";
 import { loadConfig } from "./config.js";
 import { ConversationService } from "./services/conversation.js";
 
@@ -140,6 +143,58 @@ async function main() {
     console.log("  Google: skipped (no GOOGLE_CLIENT_ID)");
   }
 
+  // 6c. Initialize GitHub (optional — commit/PR/issue tracking)
+  let githubService: GitHubService | null = null;
+  let githubProvider: GitHubContextProvider | null = null;
+
+  if (config.GITHUB_TOKEN) {
+    githubService = new GitHubService({
+      token: config.GITHUB_TOKEN,
+      repos: config.GITHUB_REPOS?.split(",").map((r) => r.trim()),
+    });
+    githubProvider = new GitHubContextProvider(githubService);
+
+    const connected = await githubService.ping().catch(() => false);
+    console.log(`  GitHub: ${connected ? "connected" : "FAILED to connect"}`);
+  } else {
+    console.log("  GitHub: skipped (no GITHUB_TOKEN)");
+  }
+
+  // 6d. Initialize Vercel (optional — deployment tracking)
+  let vercelService: VercelService | null = null;
+  let vercelProvider: VercelContextProvider | null = null;
+
+  if (config.VERCEL_TOKEN) {
+    vercelService = new VercelService({
+      token: config.VERCEL_TOKEN,
+      projectId: config.VERCEL_PROJECT_ID,
+      teamId: config.VERCEL_TEAM_ID,
+    });
+    vercelProvider = new VercelContextProvider(vercelService);
+
+    const connected = await vercelService.ping().catch(() => false);
+    console.log(`  Vercel: ${connected ? "connected" : "FAILED to connect"}`);
+  } else {
+    console.log("  Vercel: skipped (no VERCEL_TOKEN)");
+  }
+
+  // 6e. Initialize Supabase Awareness (optional — project health monitoring)
+  let supabaseAwarenessService: SupabaseAwarenessService | null = null;
+  let supabaseAwarenessProvider: SupabaseAwarenessProvider | null = null;
+
+  if (config.SUPABASE_ACCESS_TOKEN && config.SUPABASE_PROJECT_REF) {
+    supabaseAwarenessService = new SupabaseAwarenessService({
+      accessToken: config.SUPABASE_ACCESS_TOKEN,
+      projectRef: config.SUPABASE_PROJECT_REF,
+    });
+    supabaseAwarenessProvider = new SupabaseAwarenessProvider(supabaseAwarenessService);
+
+    const connected = await supabaseAwarenessService.ping().catch(() => false);
+    console.log(`  Supabase Awareness: ${connected ? "connected" : "FAILED to connect"}`);
+  } else {
+    console.log("  Supabase Awareness: skipped (no SUPABASE_ACCESS_TOKEN)");
+  }
+
   // 7. Initialize Context Engine
   const contextEngine = new ContextEngine();
   contextEngine.register(memoryProvider);
@@ -157,7 +212,16 @@ async function main() {
   if (calendarProvider) {
     contextEngine.register(calendarProvider);
   }
-  const providerCount = 2 + (notionProvider ? 1 : 0) + (gmailProvider ? 1 : 0) + (calendarProvider ? 1 : 0);
+  if (githubProvider) {
+    contextEngine.register(githubProvider);
+  }
+  if (vercelProvider) {
+    contextEngine.register(vercelProvider);
+  }
+  if (supabaseAwarenessProvider) {
+    contextEngine.register(supabaseAwarenessProvider);
+  }
+  const providerCount = 2 + (notionProvider ? 1 : 0) + (gmailProvider ? 1 : 0) + (calendarProvider ? 1 : 0) + (githubProvider ? 1 : 0) + (vercelProvider ? 1 : 0) + (supabaseAwarenessProvider ? 1 : 0);
   console.log(`  Context: initialized (${providerCount} provider${providerCount > 1 ? "s" : ""}, includes project knowledge)`);
 
   // 8. Initialize Agent Core (routes through Bridge, not Anthropic API)
@@ -200,6 +264,9 @@ async function main() {
     calendar: calendarService,
     synthesizer: memorySynthesizer,
     insightGenerator,
+    github: githubService,
+    vercel: vercelService,
+    supabase: supabaseAwarenessService,
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings)");
 
@@ -702,6 +769,83 @@ async function main() {
     return c.json({ slots });
   });
 
+  // API: GitHub
+  app.get("/api/github/status", async (c) => {
+    if (!githubService) {
+      return c.json({ connected: false, reason: "GITHUB_TOKEN not configured" });
+    }
+    const connected = await githubService.ping().catch(() => false);
+    return c.json({ connected });
+  });
+
+  app.get("/api/github/activity", async (c) => {
+    if (!githubService) {
+      return c.json({ error: "GitHub not configured" }, 503);
+    }
+    const activity = await githubService.getActivity();
+    return c.json(activity);
+  });
+
+  app.get("/api/github/commits", async (c) => {
+    if (!githubService) {
+      return c.json({ error: "GitHub not configured" }, 503);
+    }
+    const limit = parseInt(c.req.query("limit") || "20");
+    const commits = await githubService.getRecentCommits(limit);
+    return c.json({ commits });
+  });
+
+  app.get("/api/github/prs", async (c) => {
+    if (!githubService) {
+      return c.json({ error: "GitHub not configured" }, 503);
+    }
+    const prs = await githubService.getOpenPRs();
+    return c.json({ prs });
+  });
+
+  app.get("/api/github/issues", async (c) => {
+    if (!githubService) {
+      return c.json({ error: "GitHub not configured" }, 503);
+    }
+    const issues = await githubService.getRecentIssues();
+    return c.json({ issues });
+  });
+
+  // API: Vercel
+  app.get("/api/vercel/status", async (c) => {
+    if (!vercelService) {
+      return c.json({ connected: false, reason: "VERCEL_TOKEN not configured" });
+    }
+    const connected = await vercelService.ping().catch(() => false);
+    return c.json({ connected });
+  });
+
+  app.get("/api/vercel/deployments", async (c) => {
+    if (!vercelService) {
+      return c.json({ error: "Vercel not configured" }, 503);
+    }
+    const limit = parseInt(c.req.query("limit") || "10");
+    const deployments = await vercelService.getDeployments(limit);
+    return c.json({ deployments });
+  });
+
+  // API: Supabase Awareness
+  app.get("/api/supabase/status", async (c) => {
+    if (!supabaseAwarenessService) {
+      return c.json({ connected: false, reason: "SUPABASE_ACCESS_TOKEN not configured" });
+    }
+    const connected = await supabaseAwarenessService.ping().catch(() => false);
+    return c.json({ connected });
+  });
+
+  app.get("/api/supabase/health", async (c) => {
+    if (!supabaseAwarenessService) {
+      return c.json({ error: "Supabase Awareness not configured" }, 503);
+    }
+    const data = await supabaseAwarenessService.getRecentActivity();
+    return c.json(data);
+  });
+
   // API: Status
   app.get("/api/status", (c) => {
     return c.json({
@@ -709,6 +853,9 @@ async function main() {
       bridge: bridge.isRunning ? "running" : "idle",
       memory: "active",
       notion: notionService ? "connected" : "not configured",
+      github: githubService ? "connected" : "not configured",
+      vercel: vercelService ? "connected" : "not configured",
+      supabase: supabaseAwarenessService ? "connected" : "not configured",
       gmail: gmailService ? "connected" : googleAuth ? "not authenticated" : "not configured",
       calendar: calendarService ? "connected" : googleAuth ? "not authenticated" : "not configured",
       scheduler: scheduler.getStatus().running ? "running" : "stopped",

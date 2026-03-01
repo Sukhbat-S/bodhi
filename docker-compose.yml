@@ -11,6 +11,7 @@ services:
       - NODE_ENV=production
     volumes:
       - ./configs:/app/configs:ro
+      - ./.google-token.json:/app/.google-token.json
       - claude-auth:/root/.config/claude-code
     logging:
       driver: json-file

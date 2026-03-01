@@ -12,7 +12,7 @@ npm run dev -w @seneca/dashboard  # Dashboard on :5173
 
 ## Architecture
 
-Monorepo with npm workspaces. 9 packages, all TypeScript ESM.
+Monorepo with npm workspaces. 11 packages, all TypeScript ESM.
 
 ```
 packages/
@@ -21,6 +21,8 @@ packages/
   db/           — Drizzle ORM + Supabase Postgres (pgvector)
   memory/       — MemoryService + MemoryExtractor + MemoryContextProvider
   google/       — Gmail + Calendar (shared OAuth2, read-only)
+  knowledge/    — Notion knowledge base context provider
+  mcp-server/   — MCP server for Claude Code integration (8 tools)
   scheduler/    — node-cron proactive briefings (morning/evening/weekly)
   channels/
     telegram/   — Telegraf bot (single-user, allowedUserId gated)
@@ -42,8 +44,11 @@ apps/
 - **Context providers**: memory=priority 10, notion=8, gmail/calendar=7. Keyword-based relevance.
 - **Briefing prompts**: must explicitly instruct the agent to include each data section, or it may ignore context
 - **Google OAuth tokens**: stored in `.google-token.json` (gitignored), auto-refreshes
-- **Conversation history**: Agent has no DB dependency — server passes `history` array to `chat()`/`stream()`. Telegram still uses Agent's internal in-memory history.
+- **Conversation history**: Agent has no DB dependency — server passes `history` array to `chat()`/`stream()`. Both web chat and Telegram persist via ConversationService.
 - **ConversationService**: lives in `apps/server/src/services/conversation.ts`, uses Drizzle schema directly
+- **Telegram persistence**: Conversations persist via ConversationService with 30-min thread rotation. New thread created after inactivity gap.
+- **Dashboard served from Hono**: In production, Vite builds dashboard into `apps/dashboard/dist`, Hono serves it via `serveStatic`. In dev, Vite proxies `/api/*` to `:4000`.
+- **Memory Quality**: `/api/memories/insights` (InsightGenerator SQL) and `/api/memories/quality` (stale/neglected/frequent analysis). Dashboard QualityPage shows overview cards, tag trends, and boost/archive actions.
 - **MemorySynthesizer**: daily cron at 03:00 — dedup (>0.92 similarity), connect (clusters → AI synthesis), decay (stale -0.1 confidence), promote (frequent +0.1 importance)
 - **InsightGenerator**: pure SQL pattern detection — tag trends, stalled decisions, activity rates, neglected knowledge. Feeds into briefing prompts.
 - **Cross-session reasoning**: MemoryExtractor.crossReference() runs after each extraction, detects recurring themes across sessions, auto-creates pattern memories tagged `["auto-synthesis", "cross-session"]`
@@ -86,7 +91,10 @@ PORT=4000
 | `/api/memories` | POST | Create memory |
 | `/api/memories/stats` | GET | Memory statistics |
 | `/api/memories/search` | GET | Semantic vector search |
+| `/api/memories/:id` | PATCH | Boost/archive memory (importanceDelta, confidenceDelta) |
 | `/api/memories/:id` | DELETE | Delete memory |
+| `/api/memories/insights` | GET | AI-generated memory insights |
+| `/api/memories/quality` | GET | Stale, neglected, frequent memories + tag trends |
 | `/api/scheduler` | GET | Scheduler status + job history |
 | `/api/scheduler/trigger` | POST | Manual briefing trigger |
 | `/api/google/auth` | GET | Get Google OAuth consent URL |
@@ -145,6 +153,14 @@ Slash commands, subagents, hooks, and permissions live in `.claude/`.
 
 Pattern-based allow list for common commands: npm, git, curl to localhost, lsof/kill for port management.
 
+## MCP Server (`packages/mcp-server/`)
+
+Exposes BODHI's memory and context to Claude Code sessions via MCP protocol.
+
+Tools: `search_memories`, `store_memory`, `store_session_summary`, `get_project_context`, `get_recent_conversations`, `get_todays_context`, `get_memory_stats`, `get_bodhi_status`
+
+Used by slash commands (`/session-save`, `/session-start`, `/recall`, etc.) to persist knowledge across sessions.
+
 ## Deployment (Docker / VPS)
 
 BODHI can run 24/7 on a VPS via Docker. Target: Oracle Cloud free ARM tier ($0/mo).
@@ -182,11 +198,12 @@ Built-in `setInterval` pings database every 3 days to prevent free-tier auto-pau
 
 ### Files
 
-- `Dockerfile` — Multi-stage build (deps → runtime with tsx + claude CLI)
+- `Dockerfile` — Multi-stage build (deps → dashboard Vite build → runtime with tsx + claude CLI)
 - `docker-compose.yml` — Service config with volumes and log rotation
 - `.dockerignore` — Excludes node_modules, .env, .git
 - `deploy/bodhi.service` — systemd unit for boot persistence
 - `scripts/deploy.sh` — Pull, build, restart, verify
+- `scripts/vps-deploy.sh` — Tar, SCP, rebuild Docker on VPS from Mac
 
 ## Known Issues
 
@@ -196,7 +213,7 @@ Built-in `setInterval` pings database every 3 days to prevent free-tier auto-pau
 ## Build
 
 ```bash
-npm run build          # builds all 9 packages
+npm run build          # builds all 11 packages
 npm run build -w @seneca/scheduler  # build single package
 ```
 
@@ -212,3 +229,6 @@ npm run build -w @seneca/scheduler  # build single package
 8. Skills Suite — Session workflow (/session-save, /session-start, /reflect, /learn, /recall) ✅
 9. Deployment — Docker + VPS setup (Dockerfile, keep-alive, configurable paths) ✅
 10. Intelligence — Self-improvement loop, cross-session reasoning, proactive insights ✅
+11. Dashboard on VPS + Quality — Hono serves SPA, memory quality management ✅
+12. Email & Calendar Pages — Gmail inbox + Calendar dashboard (zero backend changes) ✅
+13. Telegram Persistence — Conversation history persisted to DB, 30-min thread rotation ✅

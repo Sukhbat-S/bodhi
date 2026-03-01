@@ -77,7 +77,7 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="p-4 border-t border-stone-800">
-        <p className="text-xs text-stone-600">v0.4.0 &middot; Phase 12</p>
+        <p className="text-xs text-stone-600">v0.5.0 &middot; Phase 13</p>
       </div>
     </aside>
   );

@@ -45,16 +45,19 @@ ssh -i "$SSH_KEY" "$VPS_USER@$VPS_HOST" "
 "
 
 echo "==> Waiting for health check..."
-sleep 10
+for i in 1 2 3 4; do
+  sleep 5
+  HEALTH=$(curl -sf "http://$VPS_HOST:4000/health" 2>/dev/null || echo '{"status":"failed"}')
+  if echo "$HEALTH" | grep -q '"healthy"'; then
+    echo "==> Health: $HEALTH"
+    echo "==> BODHI is online on VPS!"
+    rm -f /tmp/bodhi-deploy.tar.gz
+    exit 0
+  fi
+  echo "    Attempt $i: waiting..."
+done
 
-HEALTH=$(curl -sf "http://$VPS_HOST:4000/health" 2>/dev/null || echo '{"status":"failed"}')
 echo "==> Health: $HEALTH"
-
-if echo "$HEALTH" | grep -q '"healthy"'; then
-  echo "==> BODHI is online on VPS!"
-else
-  echo "==> WARNING: Health check failed. SSH in and check logs:"
-  echo "    ssh -i \"$SSH_KEY\" $VPS_USER@$VPS_HOST \"cd ~/bodhi && docker compose logs --tail=50\""
-fi
-
+echo "==> WARNING: Health check failed after 20s. SSH in and check logs:"
+echo "    ssh -i \"$SSH_KEY\" $VPS_USER@$VPS_HOST \"cd ~/bodhi && docker compose logs --tail=50\""
 rm -f /tmp/bodhi-deploy.tar.gz

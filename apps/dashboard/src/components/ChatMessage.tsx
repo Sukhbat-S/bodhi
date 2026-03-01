@@ -1,3 +1,6 @@
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 interface Props {
   role: "user" | "assistant";
   content: string;
@@ -28,7 +31,15 @@ export default function ChatMessage({ role, content, isStreaming }: Props) {
             )}
           </div>
         )}
-        <div className="whitespace-pre-wrap">{content || "\u00A0"}</div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap">{content || "\u00A0"}</div>
+        ) : (
+          <div className="prose prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-pre:bg-stone-950 prose-pre:border prose-pre:border-stone-700 prose-code:text-amber-300 prose-code:before:content-none prose-code:after:content-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {content || "\u00A0"}
+            </ReactMarkdown>
+          </div>
+        )}
       </div>
     </div>
   );

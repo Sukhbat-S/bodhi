@@ -6,6 +6,7 @@ import QualityPage from "./pages/QualityPage";
 import InboxPage from "./pages/InboxPage";
 import CalendarPage from "./pages/CalendarPage";
 import ChatPage from "./pages/ChatPage";
+import NotionPage from "./pages/NotionPage";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/quality" element={<QualityPage />} />
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/notion" element={<NotionPage />} />
           <Route path="/chat" element={<ChatPage />} />
         </Routes>
       </main>

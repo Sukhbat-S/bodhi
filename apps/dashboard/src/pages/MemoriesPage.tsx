@@ -16,6 +16,7 @@ export default function MemoriesPage() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [isSearchMode, setIsSearchMode] = useState(false);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +32,7 @@ export default function MemoriesPage() {
         const result = await getMemories({
           limit: PAGE_SIZE,
           offset: page * PAGE_SIZE,
+          ...(activeTag ? { tag: activeTag } : {}),
         });
         setMemories(result.memories);
         setTotal(result.total);
@@ -40,7 +42,7 @@ export default function MemoriesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, isSearchMode]);
+  }, [page, search, isSearchMode, activeTag]);
 
   useEffect(() => {
     loadMemories();
@@ -59,6 +61,19 @@ export default function MemoriesPage() {
     setSearch("");
     setSearchInput("");
     setIsSearchMode(false);
+    setPage(0);
+  };
+
+  const handleTagClick = (tag: string) => {
+    setActiveTag(tag);
+    setIsSearchMode(false);
+    setSearch("");
+    setSearchInput("");
+    setPage(0);
+  };
+
+  const clearTag = () => {
+    setActiveTag(null);
     setPage(0);
   };
 
@@ -109,6 +124,22 @@ export default function MemoriesPage() {
         </div>
       </form>
 
+      {/* Active tag filter */}
+      {activeTag && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs text-stone-500">Filtered by tag:</span>
+          <span className="inline-flex items-center gap-1 text-xs bg-stone-800 text-stone-300 px-2.5 py-1 rounded-full">
+            {activeTag}
+            <button
+              onClick={clearTag}
+              className="ml-0.5 text-stone-500 hover:text-stone-300 transition-colors"
+            >
+              &times;
+            </button>
+          </span>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="bg-red-500/10 text-red-400 px-4 py-3 rounded-lg mb-4 text-sm">
@@ -133,7 +164,7 @@ export default function MemoriesPage() {
       {!loading && memories.length > 0 && (
         <div className="space-y-3">
           {memories.map((m) => (
-            <MemoryCard key={m.id} memory={m} onDelete={handleDelete} />
+            <MemoryCard key={m.id} memory={m} onDelete={handleDelete} onTagClick={handleTagClick} />
           ))}
         </div>
       )}

@@ -4,9 +4,10 @@ import type { Memory } from "../api";
 interface Props {
   memory: Memory;
   onDelete: (id: string) => void;
+  onTagClick?: (tag: string) => void;
 }
 
-export default function MemoryCard({ memory, onDelete }: Props) {
+export default function MemoryCard({ memory, onDelete, onTagClick }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -78,7 +79,8 @@ export default function MemoryCard({ memory, onDelete }: Props) {
             {memory.tags.map((tag) => (
               <span
                 key={tag}
-                className="text-xs bg-stone-800 text-stone-400 px-2 py-0.5 rounded-full"
+                onClick={() => onTagClick?.(tag)}
+                className="text-xs bg-stone-800 text-stone-400 px-2 py-0.5 rounded-full cursor-pointer hover:bg-stone-700 hover:text-stone-300 transition-colors"
               >
                 {tag}
               </span>

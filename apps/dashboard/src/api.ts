@@ -278,6 +278,51 @@ export function deleteConversation(id: string) {
   });
 }
 
+// --- Notion ---
+
+export interface NotionTask {
+  id: string;
+  title: string;
+  status: string | null;
+  due: string | null;
+  url: string;
+}
+
+export interface NotionSession {
+  id: string;
+  sessionNumber: string;
+  focus: string | null;
+  status: string | null;
+  phase: string | null;
+  date: string | null;
+  keyDecisions: string | null;
+  pendingItems: string | null;
+  patternsDiscovered: string | null;
+  complexity: string | null;
+  deployed: boolean;
+  url: string;
+}
+
+export function getNotionStatus() {
+  return request<{ connected: boolean; databases: { tasks: boolean; sessions: boolean } }>(
+    "/notion/status"
+  );
+}
+
+export function getNotionTasks(filter: "all" | "active" | "todo" = "active") {
+  return request<{ tasks: NotionTask[] }>(`/notion/tasks?filter=${filter}`);
+}
+
+export function getNotionSessions(limit = 10) {
+  return request<{ sessions: NotionSession[] }>(`/notion/sessions?limit=${limit}`);
+}
+
+export function searchNotion(q: string) {
+  return request<{ results: { title: string; url: string; type: string }[] }>(
+    `/notion/search?q=${encodeURIComponent(q)}`
+  );
+}
+
 // --- Chat ---
 
 export interface ChatMessage {

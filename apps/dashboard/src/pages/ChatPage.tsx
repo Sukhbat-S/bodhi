@@ -183,8 +183,15 @@ export default function ChatPage() {
                     : "hover:bg-stone-900/50"
                 }`}
               >
-                <div className="text-sm text-stone-300 truncate pr-6">
-                  {thread.title || "Untitled"}
+                <div className="text-sm text-stone-300 truncate pr-6 flex items-center gap-1.5">
+                  <span className="truncate">{thread.title || "Untitled"}</span>
+                  <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${
+                    thread.channel === "telegram"
+                      ? "bg-blue-500/15 text-blue-400"
+                      : "bg-stone-700 text-stone-500"
+                  }`}>
+                    {thread.channel === "telegram" ? "tg" : thread.channel}
+                  </span>
                 </div>
                 <div className="text-xs text-stone-600 mt-0.5">
                   {relativeTime(thread.lastActiveAt)}

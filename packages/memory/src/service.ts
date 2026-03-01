@@ -124,7 +124,7 @@ export class MemoryService {
       importance: r.importance,
       confidence: r.confidence,
       similarity: r.similarity,
-      createdAt: r.created_at,
+      createdAt: new Date(r.created_at),
       tags: r.tags,
     }));
   }
@@ -206,7 +206,7 @@ export class MemoryService {
         importance: r.importance,
         confidence: r.confidence,
         similarity: 1,
-        createdAt: r.created_at,
+        createdAt: new Date(r.created_at),
         tags: r.tags,
         accessCount: r.access_count,
         lastAccessedAt: r.last_accessed_at,
@@ -250,7 +250,7 @@ export class MemoryService {
       importance: r.importance,
       confidence: r.confidence,
       similarity: r.similarity,
-      createdAt: r.created_at,
+      createdAt: new Date(r.created_at),
       tags: r.tags,
       targetId: memoryId,
     }));
@@ -304,7 +304,7 @@ export class MemoryService {
     return (results as any[]).map((r: any) => ({
       id: r.id, content: r.content, type: r.type,
       importance: r.importance, confidence: r.confidence,
-      similarity: 1, createdAt: r.created_at, tags: r.tags,
+      similarity: 1, createdAt: new Date(r.created_at), tags: r.tags,
     }));
   }
 
@@ -325,7 +325,7 @@ export class MemoryService {
     return (results as any[]).map((r: any) => ({
       id: r.id, content: r.content, type: r.type,
       importance: r.importance, confidence: r.confidence,
-      similarity: 1, createdAt: r.created_at, tags: r.tags,
+      similarity: 1, createdAt: new Date(r.created_at), tags: r.tags,
     }));
   }
 
@@ -397,7 +397,7 @@ export class MemoryService {
     return (results as any[]).map((r: any) => ({
       id: r.id, content: r.content, type: r.type,
       importance: r.importance, confidence: r.confidence,
-      similarity: 1, createdAt: r.created_at, tags: r.tags,
+      similarity: 1, createdAt: new Date(r.created_at), tags: r.tags,
     }));
   }
 
@@ -423,7 +423,7 @@ export class MemoryService {
     return (results as any[]).map((r: any) => ({
       id: r.id, content: r.content, type: r.type,
       importance: r.importance, confidence: r.confidence,
-      similarity: 1, createdAt: r.created_at, tags: r.tags,
+      similarity: 1, createdAt: new Date(r.created_at), tags: r.tags,
     }));
   }
 

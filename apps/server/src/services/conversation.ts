@@ -3,9 +3,11 @@
 // CRUD for conversation threads + turns using Drizzle ORM
 // ============================================================
 
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and, isNull, or } from "drizzle-orm";
 import type { Database } from "@seneca/db";
 import { conversationThreads, conversationTurns } from "@seneca/db";
+
+type ExtractionStatus = "pending" | "success" | "failed" | "abandoned";
 
 type Channel = "telegram" | "web" | "cli";
 
@@ -114,5 +116,107 @@ export class ConversationService {
       .update(conversationThreads)
       .set({ lastActiveAt: new Date() })
       .where(eq(conversationThreads.id, threadId));
+  }
+
+  // ============================================================
+  // Extraction tracking
+  // ============================================================
+
+  /**
+   * Find threads that need extraction: no extraction_status set, or failed
+   * (with fewer than 3 attempts). Ordered by most recent first.
+   */
+  async getStaleThreads(limit = 10) {
+    const results = await this.db
+      .select({
+        id: conversationThreads.id,
+        channel: conversationThreads.channel,
+        title: conversationThreads.title,
+        extractionStatus: conversationThreads.extractionStatus,
+        extractionAttempts: conversationThreads.extractionAttempts,
+        lastActiveAt: conversationThreads.lastActiveAt,
+      })
+      .from(conversationThreads)
+      .where(
+        and(
+          or(
+            isNull(conversationThreads.extractionStatus),
+            eq(conversationThreads.extractionStatus, "failed")
+          ),
+          sql`${conversationThreads.extractionAttempts} < 3`
+        )
+      )
+      .orderBy(desc(conversationThreads.lastActiveAt))
+      .limit(limit);
+
+    return results;
+  }
+
+  /**
+   * Mark a thread's extraction status. Used for dedup and retry tracking.
+   */
+  async markExtracted(
+    threadId: string,
+    status: ExtractionStatus
+  ): Promise<void> {
+    const update: Record<string, any> = {
+      extractionStatus: status,
+    };
+
+    if (status === "pending") {
+      // Mark as pending before starting — prevents duplicate extraction
+    } else if (status === "success" || status === "failed" || status === "abandoned") {
+      update.extractedAt = new Date();
+    }
+
+    if (status === "failed") {
+      // Increment attempt counter on failure
+      await this.db.execute(sql`
+        UPDATE conversation_threads
+        SET extraction_status = 'failed',
+            extracted_at = now(),
+            extraction_attempts = extraction_attempts + 1
+        WHERE id = ${threadId}
+      `);
+      return;
+    }
+
+    await this.db
+      .update(conversationThreads)
+      .set(update)
+      .where(eq(conversationThreads.id, threadId));
+  }
+
+  /**
+   * Get threads with failed extractions (for monitoring/dashboard).
+   */
+  async getFailedExtractions(limit = 20) {
+    return this.db
+      .select({
+        id: conversationThreads.id,
+        channel: conversationThreads.channel,
+        title: conversationThreads.title,
+        extractionAttempts: conversationThreads.extractionAttempts,
+        extractedAt: conversationThreads.extractedAt,
+        lastActiveAt: conversationThreads.lastActiveAt,
+      })
+      .from(conversationThreads)
+      .where(eq(conversationThreads.extractionStatus, "failed"))
+      .orderBy(desc(conversationThreads.lastActiveAt))
+      .limit(limit);
+  }
+
+  /**
+   * Get the extraction status for a specific thread.
+   */
+  async getExtractionStatus(threadId: string) {
+    const [result] = await this.db
+      .select({
+        extractionStatus: conversationThreads.extractionStatus,
+        extractionAttempts: conversationThreads.extractionAttempts,
+      })
+      .from(conversationThreads)
+      .where(eq(conversationThreads.id, threadId));
+    return result ?? null;
   }
 }

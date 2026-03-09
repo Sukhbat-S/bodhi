@@ -17,12 +17,22 @@ export const roleEnum = pgEnum("message_role", ["user", "assistant"]);
 
 // --- Conversation Threads ---
 
+export const extractionStatusEnum = pgEnum("extraction_status", [
+  "pending",
+  "success",
+  "failed",
+  "abandoned",
+]);
+
 export const conversationThreads = pgTable("conversation_threads", {
   id: uuid("id").primaryKey().defaultRandom(),
   channel: channelEnum("channel").notNull(),
   channelThreadId: text("channel_thread_id"),
   title: text("title"),
   summary: text("summary"),
+  extractionStatus: extractionStatusEnum("extraction_status"),
+  extractedAt: timestamp("extracted_at", { withTimezone: true }),
+  extractionAttempts: integer("extraction_attempts").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

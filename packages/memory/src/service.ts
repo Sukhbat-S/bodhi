@@ -427,6 +427,33 @@ export class MemoryService {
     }));
   }
 
+  /**
+   * Get recent high-importance memories regardless of semantic similarity.
+   * Used to surface important recent decisions/events even when the current
+   * message is semantically distant (e.g., "Hey" doesn't match "Blink paused").
+   */
+  async getRecentMemories(limit = 8): Promise<MemoryResult[]> {
+    const results = await this.db.execute(sql`
+      SELECT id, content, type, importance, confidence, tags, created_at
+      FROM memories
+      WHERE importance >= 0.5
+        AND confidence > 0.3
+      ORDER BY created_at DESC, importance DESC
+      LIMIT ${limit}
+    `);
+
+    return (results as any[]).map((r: any) => ({
+      id: r.id,
+      content: r.content,
+      type: r.type,
+      importance: r.importance,
+      confidence: r.confidence,
+      similarity: 0, // Not from semantic search
+      createdAt: new Date(r.created_at),
+      tags: r.tags,
+    }));
+  }
+
   async getStats(): Promise<{
     totalMemories: number;
     topTags: { tag: string; count: number }[];

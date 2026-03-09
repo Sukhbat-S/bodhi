@@ -1,10 +1,13 @@
 // ============================================================
 // BODHI — Memory Context Provider
 // Implements ContextProvider to inject memories into prompts
+// Combines semantic search + recent high-importance memories
 // ============================================================
 
 import type { ContextProvider, ContextFragment } from "@seneca/core";
 import type { MemoryService } from "./service.js";
+
+const TOTAL_MEMORY_CAP = 12;
 
 export class MemoryContextProvider implements ContextProvider {
   name = "memory";
@@ -26,9 +29,31 @@ export class MemoryContextProvider implements ContextProvider {
       };
     }
 
-    const memories = await this.memoryService.retrieve(message, 8);
+    // Fetch semantic matches and recent high-importance memories in parallel
+    const [semanticMemories, recentMemories] = await Promise.all([
+      this.memoryService.retrieve(message, 8),
+      this.memoryService.getRecentMemories(8),
+    ]);
 
-    if (memories.length === 0) {
+    // Dedup by ID — semantic results take priority (more relevant)
+    const seenIds = new Set<string>();
+    const combined = [];
+
+    for (const m of semanticMemories) {
+      if (!seenIds.has(m.id)) {
+        seenIds.add(m.id);
+        combined.push(m);
+      }
+    }
+
+    for (const m of recentMemories) {
+      if (!seenIds.has(m.id) && combined.length < TOTAL_MEMORY_CAP) {
+        seenIds.add(m.id);
+        combined.push(m);
+      }
+    }
+
+    if (combined.length === 0) {
       return {
         provider: this.name,
         content: "",
@@ -37,24 +62,34 @@ export class MemoryContextProvider implements ContextProvider {
       };
     }
 
-    // Format memories for the system prompt
-    const lines = memories.map((m) => {
-      const age = formatAge(m.createdAt);
-      const icon =
-        m.type === "decision"
-          ? "decision"
-          : m.type === "pattern"
-            ? "pattern"
-            : m.type === "preference"
-              ? "preference"
-              : m.type === "event"
-                ? "event"
-                : "fact";
-      return `- [${icon}] ${m.content} (${age}, relevance: ${(m.similarity * 100).toFixed(0)}%)`;
-    });
+    // Build formatted output with two sections
+    const sections: string[] = [];
+
+    // Section 1: Semantic matches (relevant to this message)
+    const semantic = combined.filter((m) => m.similarity > 0);
+    if (semantic.length > 0) {
+      sections.push("Relevant memories:");
+      for (const m of semantic) {
+        const age = formatAge(m.createdAt);
+        sections.push(
+          `- [${m.type}] ${m.content} (${age}, relevance: ${(m.similarity * 100).toFixed(0)}%)`
+        );
+      }
+    }
+
+    // Section 2: Recent important memories (not already in semantic)
+    const recentOnly = combined.filter((m) => m.similarity === 0);
+    if (recentOnly.length > 0) {
+      sections.push("\nRecent important context:");
+      for (const m of recentOnly) {
+        const age = formatAge(m.createdAt);
+        sections.push(`- [${m.type}] ${m.content} (${age})`);
+      }
+    }
 
     const content =
-      "Relevant memories from past conversations:\n" + lines.join("\n");
+      "Your memories (USE THESE — don't ask what you already know):\n" +
+      sections.join("\n");
 
     // Rough token estimate: ~4 chars per token
     const tokenEstimate = Math.ceil(content.length / 4);

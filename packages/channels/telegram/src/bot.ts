@@ -39,6 +39,20 @@ interface ConversationServiceLike {
   }): Promise<void>;
   updateTitle(threadId: string, title: string): Promise<void>;
   touchThread(threadId: string): Promise<void>;
+  // Extraction tracking (optional — gracefully degrades if not available)
+  getExtractionStatus?(threadId: string): Promise<{
+    extractionStatus: string | null;
+    extractionAttempts: number;
+  } | null>;
+  markExtracted?(threadId: string, status: "pending" | "success" | "failed" | "abandoned"): Promise<void>;
+  getStaleThreads?(limit?: number): Promise<{
+    id: string;
+    channel: string;
+    title: string | null;
+    extractionStatus: string | null;
+    extractionAttempts: number;
+    lastActiveAt: Date;
+  }[]>;
 }
 
 interface BotConfig {
@@ -70,6 +84,9 @@ export class TelegramBot {
   private currentThreadId: string | null = null;
   private lastMessageAt: number = 0;
   private readonly THREAD_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+  private extractionTimer: ReturnType<typeof setTimeout> | null = null;
+  private recoveryInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly RECOVERY_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
   constructor(config: BotConfig) {
     this.bot = new Telegraf(config.token);
@@ -536,12 +553,134 @@ export class TelegramBot {
 
     // Start new thread if: no current thread, or >30min inactivity
     if (!this.currentThreadId || elapsed > this.THREAD_TIMEOUT_MS) {
+      // Thread just closed after inactivity — extract session memories
+      if (this.currentThreadId && elapsed > this.THREAD_TIMEOUT_MS) {
+        this.triggerSessionExtraction(this.currentThreadId);
+      }
       const thread = await this.conversationService.createThread("telegram");
       this.currentThreadId = thread.id;
     }
 
     this.lastMessageAt = now;
+
+    // Schedule proactive extraction timer (resets on each message)
+    this.scheduleExtraction();
+
     return this.currentThreadId;
+  }
+
+  /**
+   * Schedule proactive extraction: 30 min after last message.
+   * If no new message arrives, extraction fires automatically.
+   * This is the PRIMARY extraction trigger (not reactive like before).
+   */
+  private scheduleExtraction(): void {
+    // Clear existing timer
+    if (this.extractionTimer) {
+      clearTimeout(this.extractionTimer);
+      this.extractionTimer = null;
+    }
+
+    this.extractionTimer = setTimeout(() => {
+      if (this.currentThreadId) {
+        console.log(`[telegram] Session timeout — extracting memories from thread ${this.currentThreadId}`);
+        this.triggerSessionExtraction(this.currentThreadId);
+        this.currentThreadId = null;
+      }
+      this.extractionTimer = null;
+    }, this.THREAD_TIMEOUT_MS);
+  }
+
+  /**
+   * Trigger session extraction with dedup via extraction_status.
+   * Sets status to 'pending' before starting, prevents duplicate extraction.
+   */
+  private triggerSessionExtraction(threadId: string): void {
+    this.extractSessionMemories(threadId).catch((err) => {
+      console.error("[telegram] Session extraction error:", err instanceof Error ? err.message : err);
+    });
+  }
+
+  private async extractSessionMemories(threadId: string): Promise<void> {
+    if (!this.conversationService) return;
+
+    // Check extraction status to prevent duplicates
+    if (this.conversationService.getExtractionStatus) {
+      const status = await this.conversationService.getExtractionStatus(threadId);
+      if (status?.extractionStatus === "success" || status?.extractionStatus === "pending") {
+        console.log(`[telegram] Skipping extraction for ${threadId} — already ${status.extractionStatus}`);
+        return;
+      }
+      if (status && status.extractionAttempts >= 3) {
+        console.log(`[telegram] Abandoning extraction for ${threadId} — too many attempts (${status.extractionAttempts})`);
+        if (this.conversationService.markExtracted) {
+          await this.conversationService.markExtracted(threadId, "abandoned");
+        }
+        return;
+      }
+    }
+
+    // Mark as pending before starting (dedup gate)
+    if (this.conversationService.markExtracted) {
+      await this.conversationService.markExtracted(threadId, "pending");
+    }
+
+    try {
+      const turns = await this.conversationService.getTurns(threadId);
+      if (turns.length >= 4) {
+        console.log(`[telegram] Auto-extracting session memories from thread ${threadId} (${turns.length} turns)`);
+        await this.memoryExtractor.extractSession(turns);
+
+        // Mark success
+        if (this.conversationService.markExtracted) {
+          await this.conversationService.markExtracted(threadId, "success");
+        }
+        console.log(`[telegram] ✅ Session extraction succeeded for thread ${threadId}`);
+      } else {
+        // Too few turns — mark success (nothing to extract, not a failure)
+        if (this.conversationService.markExtracted) {
+          await this.conversationService.markExtracted(threadId, "success");
+        }
+        console.log(`[telegram] Thread ${threadId} has only ${turns.length} turns — skipping extraction`);
+      }
+    } catch (err) {
+      console.error("[telegram] ❌ Session extraction failed:", err instanceof Error ? err.message : err);
+      // Mark failed — will be retried by periodic recovery
+      if (this.conversationService.markExtracted) {
+        await this.conversationService.markExtracted(threadId, "failed");
+      }
+    }
+  }
+
+  /**
+   * Periodic recovery: runs every 15 min as a safety net.
+   * Catches: timer failures, event loop stalls, missed triggers, server restarts.
+   */
+  private startRecoveryInterval(): void {
+    this.recoveryInterval = setInterval(async () => {
+      if (!this.conversationService?.getStaleThreads) return;
+
+      try {
+        const staleThreads = await this.conversationService.getStaleThreads(5);
+        if (staleThreads.length === 0) return;
+
+        console.log(`[telegram] Recovery: found ${staleThreads.length} stale thread(s) needing extraction`);
+
+        for (const thread of staleThreads) {
+          // Skip the currently active thread — it's still being talked to
+          if (thread.id === this.currentThreadId) continue;
+
+          // Skip very recent threads (still within the 30-min window)
+          const age = Date.now() - new Date(thread.lastActiveAt).getTime();
+          if (age < this.THREAD_TIMEOUT_MS) continue;
+
+          console.log(`[telegram] Recovery: extracting thread ${thread.id} (${thread.title || "untitled"})`);
+          await this.extractSessionMemories(thread.id);
+        }
+      } catch (err) {
+        console.error("[telegram] Recovery sweep error:", err instanceof Error ? err.message : err);
+      }
+    }, this.RECOVERY_INTERVAL_MS);
   }
 
   private async loadHistory(): Promise<{ role: "user" | "assistant"; content: string }[]> {
@@ -597,28 +736,30 @@ export class TelegramBot {
         }
       }
 
-      // Persist turns to database (fire-and-forget)
+      // Persist turns to database (fire-and-forget with error logging)
       if (this.conversationService && threadId) {
         this.conversationService.addTurn(threadId, {
           role: "user", content: message, channel: "telegram",
-        }).catch(() => {});
+        }).catch((err) => console.error("[telegram] Failed to save user turn:", err instanceof Error ? err.message : err));
         this.conversationService.addTurn(threadId, {
           role: "assistant", content: response.content, channel: "telegram",
           modelUsed: response.model, durationMs: response.durationMs,
-        }).catch(() => {});
-        this.conversationService.touchThread(threadId).catch(() => {});
+        }).catch((err) => console.error("[telegram] Failed to save assistant turn:", err instanceof Error ? err.message : err));
+        this.conversationService.touchThread(threadId).catch((err) => console.error("[telegram] Failed to touch thread:", err instanceof Error ? err.message : err));
 
         // Auto-title on first message in thread
         if (history && history.length === 0) {
           const title = message.slice(0, 60) + (message.length > 60 ? "..." : "");
-          this.conversationService.updateTitle(threadId, title).catch(() => {});
+          this.conversationService.updateTitle(threadId, title).catch((err) => console.error("[telegram] Failed to update title:", err instanceof Error ? err.message : err));
         }
       }
 
-      // Extract memories from this conversation (fire-and-forget)
+      // Extract memories from this exchange (fire-and-forget with logging)
       this.memoryExtractor
-        .extract(message, response.content)
-        .catch(() => {});
+        .extract(message, response.content, threadId || undefined)
+        .catch((err) => {
+          console.error("[telegram] Per-message extraction failed:", err instanceof Error ? err.message : err);
+        });
     } catch (error) {
       const errMsg =
         error instanceof Error ? error.message : "Unknown error";
@@ -653,10 +794,31 @@ export class TelegramBot {
   async start() {
     console.log("[telegram] Bot starting...");
     await this.bot.launch();
-    console.log("[telegram] Bot is running");
+    this.startRecoveryInterval();
+    console.log("[telegram] Bot is running (extraction recovery every 15 min)");
   }
 
   async stop() {
+    // Clear timers
+    if (this.extractionTimer) {
+      clearTimeout(this.extractionTimer);
+      this.extractionTimer = null;
+    }
+    if (this.recoveryInterval) {
+      clearInterval(this.recoveryInterval);
+      this.recoveryInterval = null;
+    }
+
+    // Extract current thread before shutdown (best-effort)
+    if (this.currentThreadId) {
+      console.log(`[telegram] Shutdown — extracting current thread ${this.currentThreadId}`);
+      try {
+        await this.extractSessionMemories(this.currentThreadId);
+      } catch (err) {
+        console.error("[telegram] Shutdown extraction failed:", err instanceof Error ? err.message : err);
+      }
+    }
+
     this.bot.stop("BODHI shutdown");
   }
 

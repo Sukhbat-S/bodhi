@@ -433,6 +433,45 @@ export function getSupabaseHealth() {
   return request<{ health: SupabaseProjectHealth; tables: SupabaseTableInfo[] }>("/supabase/health");
 }
 
+// --- Briefings ---
+
+export interface Briefing {
+  id: string;
+  type: "morning" | "evening" | "weekly";
+  content: string;
+  createdAt: string;
+}
+
+export interface BriefingsResponse {
+  briefings: Briefing[];
+  limit: number;
+  offset: number;
+}
+
+export function getBriefings(params?: {
+  limit?: number;
+  offset?: number;
+  type?: "morning" | "evening" | "weekly";
+}) {
+  const qs = new URLSearchParams();
+  if (params?.limit) qs.set("limit", String(params.limit));
+  if (params?.offset) qs.set("offset", String(params.offset));
+  if (params?.type) qs.set("type", params.type);
+  const query = qs.toString();
+  return request<BriefingsResponse>(`/briefings${query ? `?${query}` : ""}`);
+}
+
+// --- Push Status ---
+
+export interface PushStatus {
+  configured: boolean;
+  subscribers: number;
+}
+
+export function getPushStatus() {
+  return request<PushStatus>("/push/status");
+}
+
 // --- Chat ---
 
 export interface ChatMessage {

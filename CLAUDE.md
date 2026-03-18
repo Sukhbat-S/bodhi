@@ -59,7 +59,7 @@ apps/
 - **GitHub tracking**: plain `fetch` with Bearer token (no octokit). Auto-discovers repos via `/user/repos` if `GITHUB_REPOS` not set. Briefings include open PRs, recent commits, issues.
 - **Vercel tracking**: plain `fetch` with Bearer token. Optional `teamId` for team-scoped queries. Tracks deployment state (READY/BUILDING/ERROR), build duration, commit refs.
 - **Supabase awareness**: Management API at `api.supabase.com`. Monitors project health status, table row counts. Briefings flag non-healthy status.
-- **Auto-capture on commit**: `/commit` command now auto-stores event/decision/pattern memories after non-trivial commits. Checks for duplicates via `search_memories` first.
+- **Consolidated commands**: Only 2 commands needed — `/session-start` (load context + health check) and `/session-save` (commit work + extract knowledge). The separate `/commit` skill was removed; its logic is now built into `/session-save`. This prevents session log gaps (like 068-074) caused by forgetting to save.
 
 ## Dev Workflow
 
@@ -70,69 +70,7 @@ apps/
 - Telegram bot can timeout on startup if port is occupied — always kill stale processes first
 - Test briefings: `curl -s -X POST localhost:4000/api/scheduler/trigger -H "Content-Type: application/json" -d '{"type":"morning"}'`
 
-## Environment Variables (.env at monorepo root)
-
-```
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_ALLOWED_USER_ID=
-DATABASE_URL=postgresql://...
-VOYAGE_API_KEY=
-GOOGLE_CLIENT_ID=        # optional — enables Gmail + Calendar
-GOOGLE_CLIENT_SECRET=    # optional
-GOOGLE_REDIRECT_URI=     # optional (defaults to localhost:4000 callback)
-GITHUB_TOKEN=            # optional — enables GitHub activity tracking
-GITHUB_REPOS=            # optional — comma-separated "owner/repo" (auto-discovers if blank)
-VERCEL_TOKEN=            # optional — enables Vercel deployment tracking
-VERCEL_PROJECT_ID=       # optional — specific project (lists all if blank)
-VERCEL_TEAM_ID=          # optional — team scope
-SUPABASE_ACCESS_TOKEN=   # optional — enables Supabase health monitoring
-SUPABASE_PROJECT_REF=    # optional — project ref ID
-PORT=4000
-```
-
-`ANTHROPIC_API_KEY` is optional (not used — Bridge handles AI).
-
-## API Endpoints (Hono on :4000)
-
-| Route | Method | Purpose |
-|-------|--------|---------|
-| `/` | GET | Health check |
-| `/api/status` | GET | Service status |
-| `/api/chat` | POST | Chat (non-streaming, accepts threadId) |
-| `/api/chat/stream` | POST | SSE streaming chat (accepts threadId) |
-| `/api/code` | POST | Bridge direct execution |
-| `/api/memories` | GET | List memories (paginated, filterable) |
-| `/api/memories` | POST | Create memory |
-| `/api/memories/stats` | GET | Memory statistics |
-| `/api/memories/search` | GET | Semantic vector search |
-| `/api/memories/:id` | PATCH | Boost/archive memory (importanceDelta, confidenceDelta) |
-| `/api/memories/:id` | DELETE | Delete memory |
-| `/api/memories/insights` | GET | AI-generated memory insights |
-| `/api/memories/quality` | GET | Stale, neglected, frequent memories + tag trends |
-| `/api/scheduler` | GET | Scheduler status + job history |
-| `/api/scheduler/trigger` | POST | Manual briefing trigger |
-| `/api/google/auth` | GET | Get Google OAuth consent URL |
-| `/api/google/oauth/callback` | GET | OAuth callback handler |
-| `/api/gmail/status` | GET | Gmail connection status |
-| `/api/gmail/inbox` | GET | Recent inbox emails |
-| `/api/gmail/unread` | GET | Unread count |
-| `/api/gmail/search` | GET | Search emails (q param) |
-| `/api/calendar/status` | GET | Calendar connection status |
-| `/api/calendar/today` | GET | Today's events |
-| `/api/calendar/upcoming` | GET | Next N days events |
-| `/api/calendar/free` | GET | Free time slots today |
-| `/api/conversations` | GET | List threads (paginated, newest first) |
-| `/api/conversations/:id` | GET | Get thread with all turns |
-| `/api/conversations/:id` | DELETE | Delete thread (cascade) |
-| `/api/github/status` | GET | GitHub connection status |
-| `/api/github/activity` | GET | Commits + PRs + issues combined |
-| `/api/github/commits` | GET | Recent commits across repos |
-| `/api/github/prs` | GET | Open pull requests |
-| `/api/github/issues` | GET | Open issues |
-| `/api/vercel/status` | GET | Vercel connection status |
-| `/api/vercel/deployments` | GET | Recent deployments |
-| `/api/supabase/status` | GET | Supabase connection status |
-| `/api/supabase/health` | GET | Project health + table stats |
+See `REFERENCE.md` for environment variables, API endpoint table, and deployment details.
 
 ## Session Workflow
 
@@ -141,25 +79,42 @@ Every Claude Code session on BODHI should follow this flow:
 - **Start**: Run `/session-start` to load context from BODHI's memory (last session, pending items, today's schedule)
 - **During**: Run `/reflect` when you notice patterns, hit breakthroughs, or want to capture insights mid-session
 - **During**: Run `/learn` to explicitly teach BODHI something (technical or personal)
-- **End**: ALWAYS run `/session-save` before ending the session — this is the most important step
+- **End**: Run `/session-save` — commits any uncommitted work, then extracts and stores all session knowledge to BODHI's memory. This is the only end-of-session command needed.
 
 ## Claude Code Infrastructure
 
-Slash commands, subagents, hooks, and permissions live in `.claude/`.
+Skills, subagents, hooks, and permissions live in `.claude/`.
 
-### Slash Commands (`.claude/commands/`)
+### Skills (`.claude/skills/`)
 
-| Command | Usage | Purpose |
-|---------|-------|---------|
-| `/session-save` | `/session-save` | **End of session**: Extract all learnings, decisions, patterns, and pending items |
+Skills use SKILL.md format with YAML frontmatter for auto-invocation, tool restrictions, and forked context execution.
+
+#### User-Invocable Skills
+
+| Skill | Usage | Purpose |
+|-------|-------|---------|
+| `/start` | `/start` | **Full startup**: Check/start server + load session context |
+| `/session-save` | `/session-save` | **End of session**: Commits work + extracts all session knowledge to BODHI memory |
 | `/session-start` | `/session-start` | **Start of session**: Load project context, pending items, today's schedule |
 | `/reflect` | `/reflect` | Mid-session checkpoint: capture insights before they're forgotten |
 | `/learn` | `/learn [topic]` | Explicitly teach BODHI something (guided storage) |
 | `/recall` | `/recall [query]` | Quick memory search (e.g., `/recall deployment patterns`) |
 | `/briefing` | `/briefing morning` | Trigger morning/evening/weekly briefing |
 | `/deploy` | `/deploy` | Build all packages, restart server, verify status |
-| `/commit` | `/commit` | Stage + commit with Co-Authored-By trailer + auto-capture learnings |
 | `/status` | `/status` | Quick health check (API + Gmail + Calendar) |
+| `/review` | `/review` | Code review recent changes (forked context) |
+| `/health-report` | `/health-report` | Full system health report (forked context) |
+
+#### Auto-Invocation Skills (BODHI's Brain)
+
+These skills Claude loads automatically when relevant — no `/` invocation needed:
+
+| Skill | Triggers On |
+|-------|-------------|
+| `bodhi-patterns` | Working on BODHI code — architecture, Bridge routing, memory flow |
+| `jewelry-patterns` | Working on jewelry/shigtgee code — admin pages, API routes, Supabase |
+| `collaboration` | All sessions — workflow preferences, VPS guidance, communication style |
+| `auto-health` | Errors, server issues, Telegram not responding |
 
 ### Subagents (`.claude/agents/`)
 
@@ -167,6 +122,10 @@ Slash commands, subagents, hooks, and permissions live in `.claude/`.
 |-------|---------|
 | `build-verifier` | Run `npm run build`, report errors, suggest fixes (read-only) |
 | `code-simplifier` | Review recent changes, suggest simplifications (read-only) |
+
+### HEARTBEAT.md — Proactive Monitoring
+
+`HEARTBEAT.md` at project root defines autonomous health check tasks. Run via `scripts/heartbeat.sh` (cron every 30 minutes). Claude Code reads the checklist and executes applicable tasks — alerts via Telegram only when issues are found.
 
 ### Hooks
 
@@ -182,51 +141,7 @@ Exposes BODHI's memory and context to Claude Code sessions via MCP protocol.
 
 Tools: `search_memories`, `store_memory`, `store_session_summary`, `get_project_context`, `get_recent_conversations`, `get_todays_context`, `get_memory_stats`, `get_bodhi_status`
 
-Used by slash commands (`/session-save`, `/session-start`, `/recall`, etc.) to persist knowledge across sessions.
-
-## Deployment (Docker / VPS)
-
-BODHI can run 24/7 on a VPS via Docker. Target: Oracle Cloud free ARM tier ($0/mo).
-
-### Quick Deploy
-
-```bash
-docker compose build          # Build image
-docker compose up -d           # Start in background
-docker compose logs -f         # Tail logs
-curl localhost:4000/health     # Verify health
-```
-
-### Environment Variables for Deployment
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `TIMEZONE` | Scheduler timezone | `Asia/Ulaanbaatar` |
-| `BODHI_PROJECT_DIR` | Default cwd for Bridge/code commands | `process.cwd()` |
-| `CORS_ORIGINS` | Extra CORS origins (comma-separated) | localhost only |
-
-### Claude Code CLI Auth on VPS
-
-Bridge spawns `claude` CLI as subprocess (headless, no TTY needed). Transfer auth from Mac:
-
-```bash
-scp ~/.config/claude-code/auth.json user@vps:~/.config/claude-code/auth.json
-```
-
-For Docker, mount via volume (configured in docker-compose.yml).
-
-### Supabase Keep-Alive
-
-Built-in `setInterval` pings database every 3 days to prevent free-tier auto-pause.
-
-### Files
-
-- `Dockerfile` — Multi-stage build (deps → dashboard Vite build → runtime with tsx + claude CLI)
-- `docker-compose.yml` — Service config with volumes and log rotation
-- `.dockerignore` — Excludes node_modules, .env, .git
-- `deploy/bodhi.service` — systemd unit for boot persistence
-- `scripts/deploy.sh` — Pull, build, restart, verify
-- `scripts/vps-deploy.sh` — Tar, SCP, rebuild Docker on VPS from Mac
+Used by skills (`/session-save`, `/session-start`, `/recall`, etc.) to persist knowledge across sessions.
 
 ## Known Issues
 
@@ -257,3 +172,4 @@ npm run build -w @seneca/scheduler  # build single package
 13. Telegram Persistence — Conversation history persisted to DB, 30-min thread rotation ✅
 14. Chat UX + Notion Dashboard — Streaming chat, Notion tasks/sessions page ✅
 15. Awareness Expansion — GitHub, Vercel, Supabase monitoring + auto-capture on commit ✅
+16. Skills 2.0 — SKILL.md migration, brain skills, forked-context skills, HEARTBEAT.md ✅

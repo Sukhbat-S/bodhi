@@ -42,6 +42,20 @@ interface SupabaseDataSource {
   getBriefingSummary(): Promise<string>;
 }
 
+export interface PushSender {
+  sendToAll(payload: {
+    title: string;
+    body: string;
+    type?: "morning" | "evening" | "weekly";
+    url?: string;
+    timestamp?: string;
+  }): Promise<{ sent: number; failed: number }>;
+}
+
+export interface BriefingStore {
+  save(type: "morning" | "evening" | "weekly", content: string): Promise<void>;
+}
+
 export interface SchedulerConfig {
   agent: Agent;
   telegram: TelegramSender;
@@ -56,6 +70,8 @@ export interface SchedulerConfig {
   supabase?: SupabaseDataSource | null;
   synthesizer?: MemorySynthesizer | null;
   insightGenerator?: InsightGenerator | null;
+  pushSender?: PushSender | null;
+  briefingStore?: BriefingStore | null;
 }
 
 interface JobRecord {
@@ -422,6 +438,31 @@ Generate the ${type} briefing now.`;
 
       const message = `${label}\n\n${response.content}`;
       await this.config.telegram.sendProactiveMessage(message);
+
+      // 5b. Persist briefing to DB (for PWA feed)
+      if (this.config.briefingStore) {
+        try {
+          await this.config.briefingStore.save(type, response.content);
+        } catch (err) {
+          console.error(`[scheduler] Failed to persist ${type} briefing:`, err instanceof Error ? err.message : err);
+        }
+      }
+
+      // 5c. Push to PWA subscribers
+      if (this.config.pushSender) {
+        try {
+          const pushResult = await this.config.pushSender.sendToAll({
+            title: label,
+            body: response.content.slice(0, 200) + (response.content.length > 200 ? "..." : ""),
+            type,
+            url: "/briefings",
+            timestamp: new Date().toISOString(),
+          });
+          console.log(`[scheduler] Push: ${pushResult.sent} sent, ${pushResult.failed} failed`);
+        } catch (err) {
+          console.error(`[scheduler] Push failed:`, err instanceof Error ? err.message : err);
+        }
+      }
 
       // 6. Log success
       const durationMs = Date.now() - startTime;

@@ -56,7 +56,8 @@ export class Agent {
 
     const task = await this.backend.execute(fullPrompt, {
       model: this.config.model.includes("opus") ? "opus" : "sonnet",
-      tools: "",  // Disable all tools — pure chat mode
+      // Coworker mode: full tool access (Read, Edit, Bash, Grep, Glob, Write)
+      // Bridge defaults apply — no tool restriction
       noSessionPersistence: true,
     });
 
@@ -107,8 +108,8 @@ export class Agent {
       fullPrompt,
       {
         model: this.config.model.includes("opus") ? "opus" : "sonnet",
-        // Enable Read tool when image is present so Claude can view the file
-        tools: imagePath ? "Read" : "",
+        // Coworker mode: full tool access (Read, Edit, Bash, Grep, Glob, Write)
+        // Bridge defaults apply — no tool restriction
         noSessionPersistence: true,
       },
       (update) => {
@@ -165,17 +166,18 @@ export class Agent {
 
     if (context && context.fragments.length > 0) {
       prompt += "\n\n---\n\n## Current Context\n\n";
+      prompt += "**Important:** The context below contains your memories from past conversations and live data from connected services. Actively reference this information when responding — don't ask questions you already have answers to. If memories are relevant, use them naturally in your response.\n\n";
       for (const fragment of context.fragments) {
         prompt += `### ${fragment.provider}\n${fragment.content}\n\n`;
       }
     }
 
     if (imagePath) {
-      // Image mode: enable Read tool to view the image file
-      prompt += `\n\nThe user sent an image. FIRST, use the Read tool to view the file at "${imagePath}". Then respond about what you see. You may ONLY use the Read tool — do not use any other tools. After viewing the image, respond conversationally.\n`;
-    } else {
-      prompt += "\n\nIMPORTANT: You are in a conversational chat. Respond directly to the user. Do NOT use any tools. Do NOT try to read, write, or edit any files. Just respond with text.\n";
+      prompt += `\n\nThe user sent an image. Use the Read tool to view the file at "${imagePath}", then respond about what you see.\n`;
     }
+
+    prompt += `\n\nYou are BODHI, Sukhbat's AI coworker. You have full tool access: Read, Edit, Write, Bash, Grep, Glob. Use them whenever a task requires it — read files, edit code, run commands, search the codebase. Act like a capable teammate: if asked to fix a bug, actually fix it. If asked about code, read it first. Be direct and get things done. For purely conversational messages, just respond with text — no need to use tools for simple questions.\n`;
+    prompt += `\nWorking directory: ${process.cwd()}\n`;
     prompt += "</system>\n\n";
 
     // Use external history if provided, otherwise use internal (minus the latest user message)

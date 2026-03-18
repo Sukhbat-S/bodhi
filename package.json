@@ -9,6 +9,8 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=@seneca/server",
+    "start:all": "bash scripts/start.sh",
+    "stop:all": "bash scripts/stop.sh",
     "build": "npm run build --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present",
     "test": "vitest run",

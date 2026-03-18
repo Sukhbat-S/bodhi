@@ -21,3 +21,38 @@
     @apply bg-stone-600;
   }
 }
+
+/* Ecosystem graph animations */
+@keyframes hub-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.2), 0 0 40px rgba(139, 92, 246, 0.1); }
+  50% { box-shadow: 0 0 30px rgba(139, 92, 246, 0.35), 0 0 60px rgba(139, 92, 246, 0.15); }
+}
+
+.hub-pulse {
+  animation: hub-pulse 3s ease-in-out infinite;
+}
+
+@keyframes edge-march {
+  to { stroke-dashoffset: -20; }
+}
+
+.ecosystem-edge-animated path {
+  animation: edge-march 1.5s linear infinite;
+}
+
+/* Override React Flow defaults for dark theme */
+.ecosystem-canvas .react-flow__background {
+  background-color: transparent !important;
+}
+
+.ecosystem-canvas .react-flow__minimap {
+  border-radius: 8px;
+}
+
+.ecosystem-canvas .react-flow__controls button {
+  border-radius: 4px;
+}
+
+.ecosystem-canvas .react-flow__controls button svg {
+  fill: #a8a29e;
+}

@@ -1,0 +1,76 @@
+---
+name: bodhi-patterns
+description: BODHI architecture patterns and conventions. Auto-load when working on BODHI code — monorepo structure, Bridge CLI routing, memory embedding flow, context providers, env var patterns.
+user-invocable: false
+---
+
+# BODHI Architecture Patterns
+
+## Monorepo Structure
+
+TypeScript ESM monorepo with npm workspaces. 14 packages under `packages/`, 2 apps under `apps/`.
+
+- **All AI reasoning** routes through `packages/bridge/` → Claude Code CLI subprocess (NOT Anthropic API directly)
+- Agent (`packages/core/`) uses `AIBackend` interface, Bridge implements it
+- Server (`apps/server/`) wires everything together with Hono on port 4000
+- Dashboard (`apps/dashboard/`) is React 19 + Vite 6 + Tailwind 3 SPA on port 5173
+
+## Bridge Pattern
+
+```
+User → Telegram/Web → Agent.chat() → Bridge.generate() → claude CLI subprocess → response
+```
+
+- Bridge spawns `claude -p` with `--output-format stream-json`
+- Uses Max subscription ($0 per call) — no API key needed
+- `ANTHROPIC_API_KEY` env var is optional/unused
+
+## Memory Embedding Flow
+
+```
+Input text → Voyage AI embeddings → pgvector (Supabase Postgres) → similarity search
+```
+
+- `packages/memory/` handles MemoryService + MemoryExtractor
+- `MemoryContextProvider` (priority 10) injects relevant memories into agent context
+- `MemorySynthesizer`: daily cron at 03:00 — dedup, cluster, decay, promote
+- `InsightGenerator`: pure SQL pattern detection for briefing prompts
+
+## Context Provider Pattern
+
+Providers implement `ContextProvider` interface with `priority` (higher = loaded first) and `getContext(query)`.
+
+Priority order: memory=10, projects=9, notion=8, gmail/calendar=7, github/vercel/supabase=6.
+
+Keyword-based relevance filtering in each provider.
+
+## Integration Init Pattern
+
+New integrations follow the optional-init pattern in `apps/server/src/index.ts`:
+```typescript
+if (process.env.SOME_TOKEN) {
+  const service = new SomeService(process.env.SOME_TOKEN);
+  // register routes, context providers
+} else {
+  console.log('Service: disabled (no SOME_TOKEN)');
+}
+```
+
+## Conversation Flow
+
+- Agent has NO DB dependency — server passes `history` array to `chat()`/`stream()`
+- ConversationService lives in `apps/server/src/services/conversation.ts`
+- Telegram: 30-min thread rotation via ConversationService
+- Web: threadId passed in request body
+
+## Build & Dev
+
+- `tsx watch` auto-reloads server — no manual restart for TS edits
+- Kill port before restart: `lsof -ti:4000 | xargs kill -9`
+- Quote URLs with query params in zsh: `curl -s "http://...?param=val"`
+- `app.onError()` global handler returns JSON, never HTML
+
+## Dashboard Serving
+
+- Dev: Vite proxies `/api/*` to `:4000`
+- Production: Hono serves Vite build from `apps/dashboard/dist` via `serveStatic`

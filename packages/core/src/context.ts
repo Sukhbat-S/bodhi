@@ -20,7 +20,7 @@ export class ContextEngine {
 
   async gather(
     message: string,
-    budgetTokens = 2000
+    budgetTokens = 8000
   ): Promise<ContextSnapshot> {
     // Gather fragments from all providers in parallel
     const fragments = await Promise.all(

@@ -37,8 +37,11 @@ import { ProjectKnowledgeProvider } from "@seneca/knowledge";
 import { GitHubService, GitHubContextProvider } from "@seneca/github";
 import { VercelService, VercelContextProvider } from "@seneca/vercel";
 import { SupabaseAwarenessService, SupabaseAwarenessProvider } from "@seneca/supabase-awareness";
+import { desc } from "drizzle-orm";
+import { briefings } from "@seneca/db";
 import { loadConfig } from "./config.js";
 import { ConversationService } from "./services/conversation.js";
+import { PushService } from "./services/push.js";
 
 async function main() {
   console.log("🌳  BODHI starting up...\n");
@@ -195,6 +198,21 @@ async function main() {
     console.log("  Supabase Awareness: skipped (no SUPABASE_ACCESS_TOKEN)");
   }
 
+  // 6f. Initialize Push Notifications (optional — PWA Web Push)
+  let pushService: PushService | null = null;
+
+  if (config.VAPID_PUBLIC_KEY && config.VAPID_PRIVATE_KEY && config.VAPID_SUBJECT) {
+    pushService = new PushService(
+      db,
+      config.VAPID_PUBLIC_KEY,
+      config.VAPID_PRIVATE_KEY,
+      config.VAPID_SUBJECT,
+    );
+    console.log("  Push: initialized (VAPID configured)");
+  } else {
+    console.log("  Push: skipped (no VAPID keys)");
+  }
+
   // 7. Initialize Context Engine
   const contextEngine = new ContextEngine();
   contextEngine.register(memoryProvider);
@@ -230,7 +248,7 @@ async function main() {
       persona,
       model: "claude-sonnet-4-5-20250929",
       maxIterations: 10,
-      contextBudgetTokens: 2000,
+      contextBudgetTokens: 8000,
     },
     bridge
   );
@@ -253,6 +271,13 @@ async function main() {
   console.log(`  Telegram: configured (user ${config.TELEGRAM_ALLOWED_USER_ID})`);
 
   // 10. Initialize Scheduler (proactive briefings via cron)
+  // Create briefing store adapter for persisting to DB
+  const briefingStore = {
+    async save(type: "morning" | "evening" | "weekly", content: string): Promise<void> {
+      await db.insert(briefings).values({ type, content });
+    },
+  };
+
   const scheduler = new Scheduler({
     agent,
     telegram: telegramBot,
@@ -267,6 +292,8 @@ async function main() {
     github: githubService,
     vercel: vercelService,
     supabase: supabaseAwarenessService,
+    pushSender: pushService,
+    briefingStore,
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings)");
 
@@ -275,8 +302,11 @@ async function main() {
   const dashboardDistPath = path.resolve(__dirname, "../../../apps/dashboard/dist");
   const hasDashboard = fs.existsSync(dashboardDistPath);
 
-  // CORS for dashboard (Vite dev on port 5173 + optional remote origins)
+  // CORS for dashboard (Vite dev on port 5173 + optional remote origins + PWA domain)
   const corsOrigins = ["http://localhost:5173", "http://localhost:4000"];
+  if (config.PUBLIC_URL) {
+    corsOrigins.push(config.PUBLIC_URL);
+  }
   if (config.CORS_ORIGINS) {
     corsOrigins.push(...config.CORS_ORIGINS.split(",").map((o) => o.trim()));
   }
@@ -490,6 +520,21 @@ async function main() {
     }
 
     return c.json({ updated: true });
+  });
+
+  app.post("/api/memories/extract", async (c) => {
+    const body = await c.req.json<{ userMessage: string; assistantResponse: string }>();
+    if (!body.userMessage || !body.assistantResponse) {
+      return c.json({ error: "userMessage and assistantResponse are required" }, 400);
+    }
+    try {
+      // extract() stores memories internally and returns void
+      await memoryExtractor.extract(body.userMessage, body.assistantResponse);
+      return c.json({ extracted: true, message: "Memory extraction triggered. Check server logs for details." });
+    } catch (error) {
+      console.error("[api] Memory extraction failed:", error);
+      return c.json({ extracted: false, message: "Extraction failed — bridge may be unavailable" });
+    }
   });
 
   app.get("/api/memories/insights", async (c) => {
@@ -846,6 +891,74 @@ async function main() {
     return c.json(data);
   });
 
+  // ---- Push Notification Endpoints ----
+
+  app.get("/api/push/vapid-key", (c) => {
+    if (!config.VAPID_PUBLIC_KEY) {
+      return c.json({ publicKey: null });
+    }
+    return c.json({ publicKey: config.VAPID_PUBLIC_KEY });
+  });
+
+  app.post("/api/push/subscribe", async (c) => {
+    if (!pushService) {
+      return c.json({ error: "Push not configured" }, 503);
+    }
+    const body = await c.req.json<{
+      endpoint: string;
+      keys: { p256dh: string; auth: string };
+    }>();
+    if (!body.endpoint || !body.keys?.p256dh || !body.keys?.auth) {
+      return c.json({ error: "Invalid push subscription" }, 400);
+    }
+    const userAgent = c.req.header("user-agent") || undefined;
+    await pushService.subscribe(body, userAgent);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/push/unsubscribe", async (c) => {
+    if (!pushService) {
+      return c.json({ error: "Push not configured" }, 503);
+    }
+    const body = await c.req.json<{ endpoint: string }>();
+    if (!body.endpoint) {
+      return c.json({ error: "endpoint is required" }, 400);
+    }
+    await pushService.unsubscribe(body.endpoint);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/push/status", async (c) => {
+    if (!pushService) {
+      return c.json({ configured: false, subscribers: 0 });
+    }
+    const count = await pushService.getSubscriptionCount();
+    return c.json({ configured: true, subscribers: count });
+  });
+
+  // ---- Briefings Feed ----
+
+  app.get("/api/briefings", async (c) => {
+    const limit = parseInt(c.req.query("limit") || "20");
+    const offset = parseInt(c.req.query("offset") || "0");
+    const type = c.req.query("type") as "morning" | "evening" | "weekly" | undefined;
+
+    let query = db
+      .select()
+      .from(briefings)
+      .orderBy(desc(briefings.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    if (type) {
+      const { eq } = await import("drizzle-orm");
+      query = query.where(eq(briefings.type, type)) as typeof query;
+    }
+
+    const results = await query;
+    return c.json({ briefings: results, limit, offset });
+  });
+
   // API: Status
   app.get("/api/status", (c) => {
     return c.json({
@@ -856,6 +969,7 @@ async function main() {
       github: githubService ? "connected" : "not configured",
       vercel: vercelService ? "connected" : "not configured",
       supabase: supabaseAwarenessService ? "connected" : "not configured",
+      push: pushService ? "configured" : "not configured",
       gmail: gmailService ? "connected" : googleAuth ? "not authenticated" : "not configured",
       calendar: calendarService ? "connected" : googleAuth ? "not authenticated" : "not configured",
       scheduler: scheduler.getStatus().running ? "running" : "stopped",
@@ -872,14 +986,47 @@ async function main() {
   if (hasDashboard) {
     console.log(`  Dashboard: serving static build from ${dashboardDistPath}`);
 
+    // serveStatic root is relative to CWD; when started via workspace,
+    // CWD = apps/server/ — use relative path to dashboard dist
+    const staticRoot = path.relative(process.cwd(), dashboardDistPath);
+
     app.use(
       "/assets/*",
       serveStatic({
-        root: "apps/dashboard/dist",
+        root: staticRoot,
         onFound: (_path, c) => {
           c.header("Cache-Control", "public, immutable, max-age=31536000");
         },
       })
+    );
+
+    // PWA: manifest, icons, service worker
+    app.use(
+      "/icons/*",
+      serveStatic({
+        root: staticRoot,
+        onFound: (_path, c) => {
+          c.header("Cache-Control", "public, max-age=86400");
+        },
+      })
+    );
+    app.use(
+      "/manifest.json",
+      serveStatic({ root: staticRoot })
+    );
+    app.use(
+      "/sw.js",
+      serveStatic({
+        root: staticRoot,
+        onFound: (_path, c) => {
+          c.header("Cache-Control", "no-cache");
+          c.header("Service-Worker-Allowed", "/");
+        },
+      })
+    );
+    app.use(
+      "/registerSW.js",
+      serveStatic({ root: staticRoot })
     );
 
     // SPA fallback: serve index.html for any non-API, non-asset route

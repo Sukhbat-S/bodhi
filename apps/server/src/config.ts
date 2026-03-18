@@ -48,6 +48,15 @@ const envSchema = z.object({
   SUPABASE_ACCESS_TOKEN: z.string().optional(),
   SUPABASE_PROJECT_REF: z.string().optional(),
 
+  // Claude Code CLI auth (optional — env var bypasses file-based OAuth)
+  CLAUDE_CODE_OAUTH_TOKEN: z.string().optional(),
+
+  // Web Push Notifications (optional — enables PWA push to dashboard)
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().optional(), // e.g. "mailto:sukhbat@example.com"
+  PUBLIC_URL: z.string().optional(), // e.g. "https://bodhi.yourdomain.com"
+
   // Server
   PORT: z.coerce.number().default(3000),
   NODE_ENV: z

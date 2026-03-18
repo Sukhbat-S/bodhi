@@ -22,6 +22,10 @@ import {
   getRecentConversations,
   getTodaysContext,
   getBodhiStatus,
+  getBriefing,
+  runMemorySynthesis,
+  getInsights,
+  extractMemories,
 } from "./client.js";
 
 // Create MCP server
@@ -197,6 +201,65 @@ server.tool(
   {},
   async () => {
     const result = await getBodhiStatus();
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: get_briefing
+// --------------------------------------------------
+server.tool(
+  "get_briefing",
+  "Generate a briefing (morning, evening, or weekly). Morning: calendar + inbox + recent memories + insights. Evening: day recap + observations. Weekly: patterns + attention items + stalled decisions.",
+  {
+    type: z
+      .enum(["morning", "evening", "weekly"])
+      .describe("Briefing type: 'morning' (daily kickoff), 'evening' (day reflection), 'weekly' (Sunday synthesis)"),
+  },
+  async ({ type }) => {
+    const result = await getBriefing(type);
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: run_memory_synthesis
+// --------------------------------------------------
+server.tool(
+  "run_memory_synthesis",
+  "Run BODHI's memory synthesis cycle: deduplicates near-identical memories, clusters related memories into patterns, decays stale low-value memories, and promotes frequently-accessed ones. Usually runs at 03:00 daily but can be triggered manually.",
+  {},
+  async () => {
+    const result = await runMemorySynthesis();
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: get_insights
+// --------------------------------------------------
+server.tool(
+  "get_insights",
+  "Get analytical insights from BODHI's memory: tag trends, stalled decisions, neglected high-value memories, and activity rates. Useful for understanding what Sukhbat has been focusing on and what needs attention.",
+  {},
+  async () => {
+    const result = await getInsights();
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: extract_memories
+// --------------------------------------------------
+server.tool(
+  "extract_memories",
+  "Extract memorable facts, decisions, and patterns from a conversation exchange. Pass the user message and assistant response — BODHI will identify and store important information automatically.",
+  {
+    user_message: z.string().describe("The user's message from the conversation"),
+    assistant_response: z.string().describe("The assistant's response from the conversation"),
+  },
+  async ({ user_message, assistant_response }) => {
+    const result = await extractMemories(user_message, assistant_response);
     return { content: [{ type: "text" as const, text: result }] };
   },
 );

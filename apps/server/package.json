@@ -11,20 +11,22 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@seneca/core": "*",
-    "@seneca/bridge": "*",
-    "@seneca/db": "*",
-    "@seneca/channel-telegram": "*",
-    "@seneca/memory": "*",
-    "@seneca/scheduler": "*",
-    "@seneca/notion": "*",
     "@hono/node-server": "^1.13.0",
-    "hono": "^4.7.0",
+    "@seneca/bridge": "*",
+    "@seneca/channel-telegram": "*",
+    "@seneca/core": "*",
+    "@seneca/db": "*",
+    "@seneca/memory": "*",
+    "@seneca/notion": "*",
+    "@seneca/scheduler": "*",
     "dotenv": "^16.4.0",
+    "hono": "^4.7.0",
+    "web-push": "^3.6.7",
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "tsx": "^4.19.0"
+    "@types/web-push": "^3.6.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
   }
 }

@@ -171,7 +171,7 @@ export class Bridge {
       for (const key of Object.keys(cleanEnv)) {
         if (
           key === "CLAUDECODE" ||
-          key.startsWith("CLAUDE_") ||
+          (key.startsWith("CLAUDE_") && key !== "CLAUDE_CODE_OAUTH_TOKEN") ||
           (key === "__CFBundleIdentifier" &&
             cleanEnv[key]?.includes("claude"))
         ) {

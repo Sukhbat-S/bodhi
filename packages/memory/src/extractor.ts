@@ -8,6 +8,25 @@ import type { AIBackend } from "@seneca/core";
 import type { MemoryInput } from "./service.js";
 import { MemoryService } from "./service.js";
 
+const SESSION_EXTRACTION_PROMPT = `You are a memory extraction system. Analyze this Telegram conversation session and extract the most important facts, decisions, patterns, and events worth remembering long-term.
+
+Rules:
+- Focus on decisions made, directions chosen, insights realized, and patterns noticed
+- Skip small talk, greetings, and routine status checks
+- Each memory should be a single, clear, self-contained statement
+- Prioritize: decisions (high importance), patterns (medium-high), facts (medium), events (medium)
+- Aim for 3-8 high-quality memories from a full session — not every detail
+- If nothing meaningful was discussed, return an empty array
+
+Return a JSON array of objects with these fields:
+- content: string (the memory, written as a factual statement about Sukhbat)
+- type: "fact" | "decision" | "pattern" | "preference" | "event"
+- importance: number (0.1 to 1.0)
+
+Example: [{"content": "Sukhbat decided to pause Blink Studio", "type": "decision", "importance": 0.9}]
+
+If nothing worth remembering: []`;
+
 const EXTRACTION_PROMPT = `You are a memory extraction system. Analyze this conversation exchange and extract key facts, decisions, preferences, patterns, or events worth remembering about the user.
 
 Rules:
@@ -109,6 +128,75 @@ Assistant response: ${assistantResponse}`;
       // Non-fatal — don't break the conversation flow
       console.error(
         "[memory] Extraction failed:",
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+
+  /**
+   * Extract memories from a full conversation session (e.g., after a Telegram thread closes).
+   * Summarizes the entire thread rather than individual exchanges.
+   */
+  async extractSession(
+    turns: { role: "user" | "assistant"; content: string }[]
+  ): Promise<void> {
+    if (turns.length < 2) return; // Nothing meaningful to extract
+
+    try {
+      // Build transcript (skip very short turns like "hi", "ok", "thanks")
+      const transcript = turns
+        .filter((t) => t.content.length > 10)
+        .map((t) => `${t.role === "user" ? "Sukhbat" : "BODHI"}: ${t.content}`)
+        .join("\n\n");
+
+      if (transcript.length < 100) return;
+
+      const fullPrompt = `<system>
+${SESSION_EXTRACTION_PROMPT}
+
+IMPORTANT: Respond ONLY with the JSON array. Do NOT use any tools. Just output the JSON.
+</system>
+
+Telegram session transcript:
+${transcript.slice(0, 8000)}`; // Cap at 8k chars to avoid huge prompts
+
+      console.log("[memory] Extracting session memories from closed thread...");
+
+      const task = await this.backend.execute(fullPrompt, {
+        model: "sonnet",
+        tools: "",
+        noSessionPersistence: true,
+      });
+
+      const text = task.result || task.error || "";
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) return;
+
+      const extracted: Array<{
+        content: string;
+        type: MemoryInput["type"];
+        importance: number;
+      }> = JSON.parse(jsonMatch[0]);
+
+      if (!Array.isArray(extracted) || extracted.length === 0) return;
+
+      for (const memory of extracted) {
+        await this.memoryService.store({
+          content: memory.content,
+          type: memory.type,
+          source: "extraction",
+          importance: memory.importance,
+          tags: ["telegram-session", "auto-session-save"],
+        });
+      }
+
+      console.log(`[memory] Session extraction: stored ${extracted.length} memories from thread`);
+
+      // Run cross-reference on session memories too
+      this.crossReference(extracted).catch(() => {});
+    } catch (error) {
+      console.error(
+        "[memory] Session extraction failed:",
         error instanceof Error ? error.message : error
       );
     }

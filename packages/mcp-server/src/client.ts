@@ -84,7 +84,8 @@ export async function searchMemories(
       const sim = Math.round(m.similarity * 100);
       const date = new Date(m.createdAt).toLocaleDateString();
       const tags = m.tags?.length ? ` [${m.tags.join(", ")}]` : "";
-      return `${i + 1}. [${m.type}] ${m.content} (${sim}% match, ${date})${tags}`;
+      const content = m.content.length > 200 ? m.content.slice(0, 200) + "..." : m.content;
+      return `${i + 1}. [${m.type}] ${content} (${sim}% match, ${date})${tags}`;
     })
     .join("\n");
 }
@@ -202,7 +203,7 @@ export async function storeSessionSummary(input: {
 
 export async function getProjectContext(
   project: string,
-  limit = 20,
+  limit = 10,
 ): Promise<string> {
   const result = await bodhiFetch<{
     memories: Array<{
@@ -228,7 +229,8 @@ export async function getProjectContext(
     const type = m.type || "fact";
     if (!grouped[type]) grouped[type] = [];
     const date = new Date(m.createdAt).toLocaleDateString();
-    grouped[type].push(`- ${m.content} (${date})`);
+    const content = m.content.length > 150 ? m.content.slice(0, 150) + "..." : m.content;
+    grouped[type].push(`- ${content} (${date})`);
   }
 
   const sections = Object.entries(grouped).map(
@@ -274,9 +276,9 @@ export async function getRecentConversations(limit = 5): Promise<string> {
     return "No recent conversations.";
   }
 
-  // Fetch turns for the most recent 3 threads (to keep output manageable)
+  // Fetch turns for the most recent thread only (to keep output manageable)
   const detailed = await Promise.all(
-    threads.slice(0, 3).map(async (thread) => {
+    threads.slice(0, 1).map(async (thread) => {
       const turnsResult = await bodhiFetch<{
         thread: Thread;
         turns: Turn[];
@@ -286,12 +288,12 @@ export async function getRecentConversations(limit = 5): Promise<string> {
         return `## ${thread.title || "Untitled"} (${thread.channel})\n  (failed to load turns)`;
       }
 
-      const turns = turnsResult.data.turns.slice(-4); // Last 4 turns
+      const turns = turnsResult.data.turns.slice(-2); // Last 2 turns
       const turnLines = turns
         .map((t) => {
           const preview =
-            t.content.length > 200
-              ? t.content.slice(0, 200) + "..."
+            t.content.length > 100
+              ? t.content.slice(0, 100) + "..."
               : t.content;
           return `  ${t.role}: ${preview}`;
         })
@@ -303,7 +305,7 @@ export async function getRecentConversations(limit = 5): Promise<string> {
   );
 
   // Add summary for remaining threads
-  const remaining = threads.slice(3).map((t) => {
+  const remaining = threads.slice(1).map((t) => {
     const ago = timeAgo(new Date(t.lastActiveAt));
     return `- ${t.title || "Untitled"} (${t.channel}, ${ago})`;
   });
@@ -412,6 +414,124 @@ export async function getBodhiStatus(): Promise<string> {
     "Channels:",
     ...Object.entries(s.channels).map(([k, v]) => `  ${k}: ${v}`),
   ].join("\n");
+}
+
+// --------------------------------------------------
+// Briefing & Synthesis APIs
+// --------------------------------------------------
+
+export async function getBriefing(
+  type: "morning" | "evening" | "weekly",
+): Promise<string> {
+  const result = await bodhiFetch<{
+    briefing?: string;
+    content?: string;
+    message?: string;
+    error?: string;
+  }>("/api/scheduler/trigger", {
+    method: "POST",
+    body: JSON.stringify({ type }),
+  });
+
+  if (!result.ok) return result.error;
+  return result.data.briefing || result.data.content || result.data.message || JSON.stringify(result.data);
+}
+
+export async function runMemorySynthesis(): Promise<string> {
+  const result = await bodhiFetch<{
+    message?: string;
+    deduped?: number;
+    synthesized?: number;
+    decayed?: number;
+    promoted?: number;
+    durationMs?: number;
+  }>("/api/scheduler/trigger", {
+    method: "POST",
+    body: JSON.stringify({ type: "synthesis" }),
+  });
+
+  if (!result.ok) return result.error;
+
+  const d = result.data;
+  if (d.message) return d.message;
+  return [
+    "Memory synthesis complete:",
+    d.deduped != null ? `  Deduplicated: ${d.deduped}` : null,
+    d.synthesized != null ? `  Synthesized: ${d.synthesized}` : null,
+    d.decayed != null ? `  Decayed: ${d.decayed}` : null,
+    d.promoted != null ? `  Promoted: ${d.promoted}` : null,
+    d.durationMs != null ? `  Duration: ${d.durationMs}ms` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export async function getInsights(): Promise<string> {
+  const result = await bodhiFetch<{
+    insights: {
+      tagTrends?: Array<{ tag: string; count: number; trend: string }>;
+      stalledDecisions?: Array<{ content: string; createdAt: string }>;
+      neglectedHighValue?: Array<{ content: string; importance: number }>;
+      activityRate?: { thisWeek: number; lastWeek: number };
+    };
+  }>("/api/memories/insights");
+
+  if (!result.ok) return result.error;
+
+  const { insights } = result.data;
+  const sections: string[] = [];
+
+  if (insights.tagTrends?.length) {
+    sections.push(
+      "Tag trends (7d):\n" +
+        insights.tagTrends
+          .slice(0, 10)
+          .map((t) => `  ${t.tag}: ${t.count} (${t.trend})`)
+          .join("\n"),
+    );
+  }
+
+  if (insights.stalledDecisions?.length) {
+    sections.push(
+      "Stalled decisions:\n" +
+        insights.stalledDecisions
+          .map((d) => `  - ${d.content} (${new Date(d.createdAt).toLocaleDateString()})`)
+          .join("\n"),
+    );
+  }
+
+  if (insights.neglectedHighValue?.length) {
+    sections.push(
+      "Neglected high-value memories:\n" +
+        insights.neglectedHighValue
+          .map((m) => `  - ${m.content} (importance: ${m.importance})`)
+          .join("\n"),
+    );
+  }
+
+  if (insights.activityRate) {
+    sections.push(
+      `Activity: ${insights.activityRate.thisWeek} memories this week vs ${insights.activityRate.lastWeek} last week`,
+    );
+  }
+
+  return sections.length > 0 ? sections.join("\n\n") : "No insights available.";
+}
+
+export async function extractMemories(
+  userMessage: string,
+  assistantResponse: string,
+): Promise<string> {
+  const result = await bodhiFetch<{
+    extracted: boolean;
+    message: string;
+  }>("/api/memories/extract", {
+    method: "POST",
+    body: JSON.stringify({ userMessage, assistantResponse }),
+  });
+
+  if (!result.ok) return result.error;
+  return result.data.message;
 }
 
 // --------------------------------------------------

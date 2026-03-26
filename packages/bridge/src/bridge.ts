@@ -160,18 +160,18 @@ export class Bridge {
         args.push("--no-session-persistence");
       }
 
-      // Strip ALL Claude-related env vars to prevent interference.
-      // When BODHI runs inside Claude Code Desktop (or a terminal launched by it),
-      // the parent process sets 7+ env vars (CLAUDE_CODE_OAUTH_TOKEN,
-      // CLAUDE_AGENT_SDK_VERSION, CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES, etc.)
-      // that cause the spawned `claude` CLI to think it's nested inside another
-      // session — leading to exit code 1 with empty stderr.
+      // Strip env vars that interfere with Claude CLI auth.
+      // ANTHROPIC_API_KEY: forces API key auth (may have no credits),
+      //   bypassing the stored OAuth/Max subscription auth.
+      // CLAUDE_*: parent Claude Code session vars that make the child
+      //   think it's nested inside another session (exit code 1).
       const cleanEnv = { ...process.env };
       const strippedVars: string[] = [];
       for (const key of Object.keys(cleanEnv)) {
         if (
           key === "CLAUDECODE" ||
-          (key.startsWith("CLAUDE_") && key !== "CLAUDE_CODE_OAUTH_TOKEN") ||
+          key === "ANTHROPIC_API_KEY" ||
+          key.startsWith("CLAUDE_") ||
           (key === "__CFBundleIdentifier" &&
             cleanEnv[key]?.includes("claude"))
         ) {
@@ -181,7 +181,7 @@ export class Bridge {
       }
       if (strippedVars.length > 0) {
         console.log(
-          `[bridge] Stripped ${strippedVars.length} CLAUDE env vars: ${strippedVars.join(", ")}`
+          `[bridge] Stripped ${strippedVars.length} env vars: ${strippedVars.join(", ")}`
         );
       }
 
@@ -254,7 +254,7 @@ export class Bridge {
 
       proc.on("close", (code) => {
         if (code !== 0) {
-          console.error(`[bridge] Exited with code ${code}. Full stderr:\n${stderrBuffer}`);
+          console.error(`[bridge] Exited with code ${code}. stderr: ${stderrBuffer || "(empty)"} stdout: ${(fullOutput || lastAssistantText).slice(0, 200) || "(empty)"}`);
         }
         this.activeTasks.delete(taskId);
         if (code === 0) {

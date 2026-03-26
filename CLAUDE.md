@@ -6,9 +6,11 @@
 
 ```bash
 cd ~/Documents/bodhi
-npm run dev -w @seneca/server     # API on :4000
-npm run dev -w @seneca/dashboard  # Dashboard on :5173
+bash scripts/start.sh            # Single server: API + Dashboard on :4000
+bash scripts/start.sh --dev      # Dev mode: API on :4000 + Vite HMR on :5173
 ```
+
+Auto-start on terminal open: `source ~/Documents/bodhi/scripts/bodhi-autostart.sh` in `.zshrc`
 
 ## Architecture
 

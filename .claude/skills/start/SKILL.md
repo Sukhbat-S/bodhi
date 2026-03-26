@@ -19,14 +19,14 @@ curl -s --max-time 3 http://localhost:4000/api/status
 
 ## Step 2: Start BODHI Server
 
-Run the start script:
+Run the start script (single server — API + Dashboard on :4000):
 ```
 cd /Users/macbookpro/Documents/bodhi && bash scripts/start.sh
 ```
 
 Wait for "BODHI Running" output. If it fails, try:
 ```
-lsof -ti:4000,5173 | xargs kill -9 2>/dev/null; sleep 1 && cd /Users/macbookpro/Documents/bodhi && bash scripts/start.sh
+lsof -ti:4000 | xargs kill -9 2>/dev/null; sleep 1 && cd /Users/macbookpro/Documents/bodhi && bash scripts/start.sh
 ```
 
 Verify it's up:
@@ -35,6 +35,8 @@ curl -s http://localhost:4000/api/status | python3 -m json.tool
 ```
 
 If still failing, report the error and stop.
+
+Note: For development with hot reload, use `bash scripts/start.sh --dev` (adds Vite on :5173).
 
 ## Step 3: Load Session Context
 
@@ -54,7 +56,7 @@ Format a concise summary:
 ```
 ## BODHI — Session Start
 
-**Server**: Running on :4000 (:5173 dashboard)
+**Server**: Running on :4000 (API + Dashboard)
 
 **Last session**: [summary of what was accomplished]
 

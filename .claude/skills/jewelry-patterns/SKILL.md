@@ -50,3 +50,29 @@ for (const item of items) {
 ## Category Mapping
 
 Photo Studio categories (`ring`, `earring`, `necklace`, `bracelet`, `chain`, `watch`, `set`) map directly to product category slugs.
+
+## Code Quality Rules (Audit Baseline: March 26, 2026)
+
+These rules exist because the codebase accumulated debt during rapid pre-launch development. Follow them to prevent regression.
+
+### No New `any` Without Justification
+- Never add `as any` or `: any` without a `// TODO(types):` comment explaining why
+- Prefer `Record<string, unknown>` over `any` for untyped JSON
+- For Supabase columns missing from generated types: use `as Record<string, unknown>` not `as any`
+- Current baseline: 212 `any` usages — this number should go DOWN, never up
+
+### New Logic Needs Tests
+- New Zod schemas → add validation tests in `__tests__/schemas.test.ts`
+- New service methods with business logic → add unit tests
+- Pure functions and helpers → always testable, always test them
+- Test command: `npm test` (vitest)
+
+### File Size Discipline
+- If a file crosses 300 lines, consider splitting
+- If a file crosses 500 lines, it MUST be split before the next feature
+- Current 500+ line files: 41 — this is tech debt, don't add to it
+
+### Quality Check
+- Run `bash scripts/quality-check.sh` to see current metrics vs baseline
+- Run `npm run typecheck` after any TypeScript changes
+- Baseline stored in `scripts/quality-baseline.json`

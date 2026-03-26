@@ -38,6 +38,18 @@ curl -s -X POST http://localhost:4000/api/chat \
 - [ ] **Memory quality**: Check `curl -s http://localhost:4000/api/memories/quality`. Report stale memory count and any tags trending down.
 - [ ] **GitHub PRs**: Check `curl -s http://localhost:4000/api/github/prs`. Alert if there are open PRs needing review.
 
+## Daily (12:00 Noon Mongolia time)
+
+- [ ] **Jewelry platform quality check**: Run quality metrics on the jewelry platform:
+  ```bash
+  cd /Users/macbookpro/Documents/jewelry-platform && bash scripts/quality-check.sh --json
+  ```
+  Compare against `scripts/quality-baseline.json`. Alert via Telegram if:
+  - `any_count` increased by 5+ since baseline
+  - `big_files` increased (new files crossing 500 lines)
+  - `tsc_passes` is false (types broken)
+  Format alert as: "📊 Code quality alert: [metric] regressed from X to Y. Check recent commits."
+
 ## Rules
 
 1. **Silent when healthy**: If all checks pass, log "HEARTBEAT_OK" and exit silently. Do NOT send Telegram messages when everything is fine.

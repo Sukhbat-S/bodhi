@@ -20,6 +20,18 @@ Check if there are uncommitted changes:
    - Do NOT push unless the user explicitly asked
 3. **If there are NO changes to commit:** Skip to Step 1. This is fine — the session may have been research/discussion only.
 
+## Step 0.5: Quality Delta (Jewelry Platform Only)
+
+If the session involved changes to the jewelry-platform codebase:
+1. Run `bash scripts/quality-check.sh --json` from the jewelry-platform directory
+2. Compare against `scripts/quality-baseline.json`
+3. Include in the session summary:
+   - `any` count change (e.g., "any: 212 → 208 (-4)")
+   - Test file count change
+   - Whether `tsc` still passes
+4. If quality improved, store a "pattern" memory about what technique was used
+5. If quality regressed, flag it in the session pending items
+
 ## Step 1: Identify Context
 
 Determine:

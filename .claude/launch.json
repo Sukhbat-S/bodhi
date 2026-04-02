@@ -1,0 +1,30 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "server",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "apps/server/src/index.ts"],
+      "port": 4000
+    },
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "apps/dashboard",
+      "port": 5173
+    },
+    {
+      "name": "jewelry",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/macbookpro/Documents/jewelry-platform", "run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "edubook",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/macbookpro/Desktop/edubook", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}

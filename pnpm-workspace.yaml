@@ -1,0 +1,5 @@
+packages:
+  - "packages/*"
+  - "packages/channels/*"
+  - "packages/tools/*"
+  - "apps/*"

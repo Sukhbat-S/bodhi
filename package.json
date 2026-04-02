@@ -1,0 +1,24 @@
+{
+  "name": "seneca",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "packages/channels/*",
+    "packages/tools/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@seneca/server",
+    "start:all": "bash scripts/start.sh",
+    "stop:all": "bash scripts/stop.sh",
+    "build": "npm run build --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  }
+}

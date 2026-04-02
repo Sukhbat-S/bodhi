@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build*)",
+      "Bash(npm run dev*)",
+      "Bash(npm install*)",
+      "Bash(npx tsc*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(lsof -ti:*)",
+      "Bash(curl -s*localhost*)",
+      "Bash(curl -s -X POST*localhost*)",
+      "Bash(kill*)",
+      "Bash(mkdir*)",
+      "Bash(ls*)",
+      "Bash(tail*)",
+      "Bash(cat*)",
+      "Bash(sleep*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/macbookpro/Documents/bodhi && npx tsc --noEmit --pretty 2>&1 | tail -5 || true"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bodhi.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd /Users/macbookpro/Documents/bodhi &amp;&amp; mkdir -p logs &amp;&amp; for p in 4000 5173; do lsof -ti:$p 2>/dev/null | xargs kill -9 2>/dev/null; done; sleep 1 &amp;&amp; nohup npm run dev -w @seneca/server > logs/server.log 2>&amp;1 &amp; echo $! > logs/server.pid &amp;&amp; nohup npm run dev -w @seneca/dashboard > logs/dashboard.log 2>&amp;1 &amp; echo $! > logs/dashboard.pid &amp;&amp; sleep 15 &amp;&amp; curl -s http://localhost:4000/ > /dev/null &amp;&amp; echo "BODHI ready"</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/macbookpro/Documents/bodhi/logs/launchd.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/macbookpro/Documents/bodhi/logs/launchd-error.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

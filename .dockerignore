@@ -1,0 +1,12 @@
+node_modules
+dist
+.turbo
+.env
+.env.local
+.git
+.DS_Store
+.google-token.json
+*.log
+.claude
+scripts
+apps/dashboard/dist

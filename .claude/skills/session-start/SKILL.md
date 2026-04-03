@@ -46,10 +46,14 @@ Determine the current project from the working directory:
 
 Run these searches in parallel:
 
-1. **Recent session summaries**: `search_memories("session-summary {project}")` — what happened last session
-2. **Pending items**: `search_memories("pending {project}")` — what's left to do
+1. **Recent session summaries**: `search_memories("session-summary {project}", limit=5, days_back=7)` — what happened in the last week
+2. **Pending items**: `search_memories("pending {project}", limit=5, days_back=7)` — what's left to do
 3. **Project context**: `get_project_context("{project}")` — key memories for this project
 4. **Today's context**: `get_todays_context()` — calendar, emails, BODHI status
+5. **Git activity** (run in parallel with above):
+   ```bash
+   git log --since='3 days ago' --oneline --no-merges 2>/dev/null | head -15
+   ```
 
 ## Step 3: Present Briefing
 
@@ -60,7 +64,10 @@ BODHI status:
 
 ## {Project} — Session Start
 
-**Last session**: [summary of what was accomplished]
+**Recent work** (last 3 days):
+[git log output — concrete commits showing what was done]
+
+**Last session**: [summary from memory search]
 
 **Pending items**:
 - item 1

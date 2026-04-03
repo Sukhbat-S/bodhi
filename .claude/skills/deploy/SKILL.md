@@ -7,6 +7,7 @@ allowed-tools: Bash(npm *), Bash(curl *), Bash(lsof *), Bash(kill *)
 
 Run the full deploy sequence:
 
+0. **Ask user for explicit approval before proceeding.** Say: "Ready to deploy BODHI (build all packages, restart server on :4000). Proceed?"
 1. `npm run build` (all packages)
 2. Kill any process on port 4000: `lsof -ti:4000 | xargs kill -9`
 3. Start server: `npm run dev -w @seneca/server`

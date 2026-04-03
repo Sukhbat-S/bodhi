@@ -63,6 +63,14 @@ apps/
 - **Supabase awareness**: Management API at `api.supabase.com`. Monitors project health status, table row counts. Briefings flag non-healthy status.
 - **Consolidated commands**: Only 2 commands needed — `/session-start` (load context + health check) and `/session-save` (commit work + extract knowledge). The separate `/commit` skill was removed; its logic is now built into `/session-save`. This prevents session log gaps (like 068-074) caused by forgetting to save.
 
+## Rules
+
+- **Never deploy without asking.** Do not run `/deploy`, restart the server, `git push`, or start `scripts/start.sh` without explicit user approval.
+- **Check the correct directory.** Before making changes, confirm you are in `/Users/macbookpro/Documents/bodhi`. BODHI and jewelry-platform are sibling directories — never cross-edit.
+- **Keep it simple.** Do not over-engineer. Prefer the smallest change that solves the problem. No speculative abstractions, extra layers, or features not requested.
+- **Write accurate commit messages.** Messages must describe the actual change. Use "add" for new features, "update" for enhancements, "fix" for bugs. Never exaggerate severity or use vague messages.
+- **Save output to the project.** Never save generated files, exports, or logs to `/tmp`. Use the project directory or an appropriate subdirectory.
+
 ## Dev Workflow
 
 - `tsx watch` auto-reloads server on file changes (no manual restart needed for TS edits)

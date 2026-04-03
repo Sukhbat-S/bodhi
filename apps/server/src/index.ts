@@ -448,7 +448,8 @@ async function main() {
       return c.json({ error: "q query parameter is required" }, 400);
     }
     const limit = parseInt(c.req.query("limit") || "10");
-    const results = await memoryService.retrieve(q, limit);
+    const days = c.req.query("days") ? parseInt(c.req.query("days")!) : undefined;
+    const results = await memoryService.retrieve(q, limit, days);
     return c.json({ memories: results });
   });
 

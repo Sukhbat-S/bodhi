@@ -43,9 +43,10 @@ server.tool(
   {
     query: z.string().describe("What to search for (e.g., 'checkout flow decisions', 'deployment patterns')"),
     limit: z.number().optional().default(10).describe("Max results to return (default: 10)"),
+    days_back: z.number().optional().describe("Only search memories from the last N days (e.g., 7 for last week). Omit for all-time search."),
   },
-  async ({ query, limit }) => {
-    const result = await searchMemories(query, limit);
+  async ({ query, limit, days_back }) => {
+    const result = await searchMemories(query, limit, days_back);
     return { content: [{ type: "text" as const, text: result }] };
   },
 );

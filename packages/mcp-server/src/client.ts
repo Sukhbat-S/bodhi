@@ -67,10 +67,11 @@ export interface MemoryResult {
 export async function searchMemories(
   query: string,
   limit = 10,
+  daysBack?: number,
 ): Promise<string> {
-  const result = await bodhiFetch<{ memories: MemoryResult[] }>(
-    `/api/memories/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-  );
+  let url = `/api/memories/search?q=${encodeURIComponent(query)}&limit=${limit}`;
+  if (daysBack) url += `&days=${daysBack}`;
+  const result = await bodhiFetch<{ memories: MemoryResult[] }>(url);
 
   if (!result.ok) return result.error;
 

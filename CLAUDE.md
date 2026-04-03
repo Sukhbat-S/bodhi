@@ -139,6 +139,9 @@ These skills Claude loads automatically when relevant — no `/` invocation need
 
 ### Hooks
 
+- **SessionStart**: Runs `scripts/session-inject.sh` — auto-loads BODHI context (status, recent sessions, pending items, calendar, git log) into every new Claude Code session. Lighter than `/session-start`; use `/session-start` for full context.
+- **SessionEnd**: Runs `scripts/session-end.sh` — stores a breadcrumb memory (timestamp, last commit, branch) so sessions aren't lost if `/session-save` is forgotten.
+- **PreToolUse** (`Bash`): Deploy gate — blocks `git push`, `bash scripts/start`, `kill.*4000` without user approval. Also runs `tsc --noEmit` before `git commit`.
 - **PostToolUse** (`Write|Edit`): Runs `tsc --noEmit` after every file edit to catch type errors immediately.
 
 ### Permissions (`.claude/settings.json`)

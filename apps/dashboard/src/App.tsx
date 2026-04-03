@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
+import ReflectionPage from "./pages/ReflectionPage";
 import StatusPage from "./pages/StatusPage";
 import MemoriesPage from "./pages/MemoriesPage";
 import QualityPage from "./pages/QualityPage";
@@ -14,6 +15,7 @@ import SupabasePage from "./pages/SupabasePage";
 import EcosystemPage from "./pages/EcosystemPage";
 import BriefingsPage from "./pages/BriefingsPage";
 import SearchPage from "./pages/SearchPage";
+import TimelinePage from "./pages/TimelinePage";
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -21,7 +23,7 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Mobile header */}
-      <header className="fixed top-0 left-0 right-0 z-40 flex items-center h-14 px-4 bg-stone-900 border-b border-stone-800 md:hidden">
+      <header className="fixed top-0 left-0 right-0 z-40 flex items-center h-14 px-4 bg-stone-950 border-b border-stone-800/60 md:hidden">
         <button
           onClick={() => setSidebarOpen(true)}
           className="p-2 -ml-2 text-stone-400 hover:text-stone-200"
@@ -32,7 +34,11 @@ export default function App() {
           </svg>
         </button>
         <h1 className="ml-3 text-lg font-bold text-stone-100 flex items-center gap-2">
-          <span>🌳</span> BODHI
+          <svg className="w-5 h-5" viewBox="0 0 100 100" fill="none" stroke="#d97706" strokeWidth="4">
+            <path d="M50 10 C25 30, 15 50, 50 80 C85 50, 75 30, 50 10Z" strokeLinejoin="round" />
+            <path d="M50 25 L50 70" strokeLinecap="round" />
+          </svg>
+          BODHI
         </h1>
       </header>
 
@@ -40,9 +46,10 @@ export default function App() {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
+      <main className="flex-1 overflow-y-auto pt-14 md:pt-0 bg-stone-950">
         <Routes>
-          <Route path="/" element={<StatusPage />} />
+          <Route path="/" element={<ReflectionPage />} />
+          <Route path="/status" element={<StatusPage />} />
           <Route path="/briefings" element={<BriefingsPage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/ecosystem" element={<EcosystemPage />} />
@@ -55,6 +62,7 @@ export default function App() {
           <Route path="/vercel" element={<VercelPage />} />
           <Route path="/supabase" element={<SupabasePage />} />
           <Route path="/chat" element={<ChatPage />} />
+          <Route path="/timeline" element={<TimelinePage />} />
         </Routes>
       </main>
     </div>

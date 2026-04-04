@@ -52,6 +52,26 @@ Example output:
 
 If nothing worth remembering: []`;
 
+const JOURNAL_EXTRACTION_PROMPT = `You are a personal journal memory extraction system. Analyze this voice journal entry and extract meaningful personal memories.
+
+Rules:
+- Focus on feelings, reflections, goals, intentions, and personal observations
+- Capture what the person is thinking about, worrying about, or excited about
+- Extract any commitments, plans, or decisions mentioned
+- Capture relationships and interactions mentioned (who they talked to, about what)
+- Write each memory as a warm, personal statement (not clinical or technical)
+- Aim for 2-6 quality memories — don't force extraction from simple entries
+- If the entry is just a quick thought, extract 1-2 memories
+
+Return a JSON array of objects with these fields:
+- content: string (the memory, written in third person about the user)
+- type: "fact" | "decision" | "pattern" | "preference" | "event"
+- importance: number (0.3 to 1.0 — personal insights and decisions are high, casual thoughts are lower)
+
+Example: [{"content": "Sukhbat is feeling good about the progress on the jewelry platform launch", "type": "fact", "importance": 0.6}]
+
+If nothing worth remembering: []`;
+
 export class MemoryExtractor {
   private backend: AIBackend;
   private memoryService: MemoryService;
@@ -199,6 +219,66 @@ ${transcript.slice(0, 8000)}`; // Cap at 8k chars to avoid huge prompts
         "[memory] Session extraction failed:",
         error instanceof Error ? error.message : error
       );
+    }
+  }
+
+  /**
+   * Extract memories from a voice journal entry.
+   * Uses a journal-specific prompt optimized for personal reflections.
+   */
+  async extractJournal(transcript: string): Promise<number> {
+    if (transcript.length < 20) return 0;
+
+    try {
+      const fullPrompt = `<system>
+${JOURNAL_EXTRACTION_PROMPT}
+
+IMPORTANT: Respond ONLY with the JSON array. Do NOT use any tools. Just output the JSON.
+</system>
+
+Voice journal entry:
+${transcript.slice(0, 6000)}`;
+
+      console.log("[memory] Extracting journal memories...");
+
+      const task = await this.backend.execute(fullPrompt, {
+        model: "sonnet",
+        tools: "",
+        noSessionPersistence: true,
+      });
+
+      const text = task.result || task.error || "";
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) return 0;
+
+      const extracted: Array<{
+        content: string;
+        type: MemoryInput["type"];
+        importance: number;
+      }> = JSON.parse(jsonMatch[0]);
+
+      if (!Array.isArray(extracted) || extracted.length === 0) return 0;
+
+      for (const memory of extracted) {
+        await this.memoryService.store({
+          content: memory.content,
+          type: memory.type,
+          source: "manual",
+          importance: memory.importance,
+          tags: ["journal", "voice-journal"],
+        });
+      }
+
+      console.log(`[memory] Journal extraction: stored ${extracted.length} memories`);
+
+      this.crossReference(extracted).catch(() => {});
+      return extracted.length;
+    } catch (error) {
+      console.error(
+        "[memory] Journal extraction failed:",
+        error instanceof Error ? error.message : error
+      );
+      return 0;
     }
   }
 

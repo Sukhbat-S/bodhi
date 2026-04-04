@@ -38,3 +38,34 @@ export interface FreeSlot {
   end: string;
   durationMinutes: number;
 }
+
+// ---- Write operation types ----
+
+export interface DraftInput {
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string;
+  bcc?: string;
+}
+
+export interface DraftResult {
+  id: string;
+  threadId?: string;
+  message: string; // human-readable confirmation
+}
+
+export interface EventInput {
+  summary: string;
+  start: string; // ISO 8601 datetime
+  end: string;   // ISO 8601 datetime
+  description?: string;
+  location?: string;
+  attendees?: string[]; // email addresses
+}
+
+export interface EventResult {
+  id: string;
+  htmlLink?: string;
+  message: string;
+}

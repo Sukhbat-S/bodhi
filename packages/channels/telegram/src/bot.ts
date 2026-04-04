@@ -87,6 +87,7 @@ export class TelegramBot {
   private extractionTimer: ReturnType<typeof setTimeout> | null = null;
   private recoveryInterval: ReturnType<typeof setInterval> | null = null;
   private readonly RECOVERY_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+  private pendingJournal = false;
 
   constructor(config: BotConfig) {
     this.bot = new Telegraf(config.token);
@@ -126,6 +127,7 @@ export class TelegramBot {
           "/ask <question> — Ask BODHI anything\n" +
           "/remember <text> — Save a memory\n" +
           "/recall <query> — Search memories\n" +
+          "/journal [text] — Voice/text journal\n" +
           "/inbox — Email summary\n" +
           "/schedule — Today's calendar\n" +
           "/today — Combined snapshot\n" +
@@ -141,7 +143,8 @@ export class TelegramBot {
           "  Example: /code jewelry-platform fix the cart bug\n\n" +
           "/ask <question> — Ask BODHI (life, strategy, ideas)\n\n" +
           "/remember <text> — Store something in memory\n" +
-          "/recall <query> — Search your memories\n\n" +
+          "/recall <query> — Search your memories\n" +
+          "/journal [text] — Voice/text journal entry\n\n" +
           "/inbox — Recent emails + unread count\n" +
           "/schedule — Today's calendar events\n" +
           "/today — Combined snapshot (schedule + inbox)\n\n" +
@@ -297,6 +300,42 @@ export class TelegramBot {
       }
     });
 
+    // /journal — Voice journal entry (next voice message becomes a journal)
+    this.bot.command("journal", async (ctx) => {
+      const text = ctx.message.text.replace(/^\/journal\s*/, "").trim();
+
+      if (text) {
+        // Text journal entry
+        try {
+          const count = await this.memoryExtractor.extractJournal(text);
+          if (count > 0) {
+            ctx.reply(`Journal entry captured. Extracted ${count} memory${count > 1 ? "s" : ""}.`);
+          } else {
+            // Still store as manual memory even if extraction found nothing notable
+            await this.memoryService.store({
+              content: text,
+              type: "fact",
+              source: "manual",
+              importance: 0.6,
+              tags: ["journal"],
+            });
+            ctx.reply("Journal entry stored.");
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          ctx.reply(`Journal failed: ${msg}`);
+        }
+        return;
+      }
+
+      // No text — set flag for next voice message to be treated as journal
+      this.pendingJournal = true;
+      ctx.reply(
+        "Journal mode active. Send a voice message or type your thoughts.\n\n" +
+          "Tip: Just talk naturally — what's on your mind, how your day went, any decisions you're mulling over."
+      );
+    });
+
     // /recall — Search memories
     this.bot.command("recall", async (ctx) => {
       const query = ctx.message.text.replace(/^\/recall\s*/, "").trim();
@@ -450,6 +489,30 @@ export class TelegramBot {
     this.bot.on(message("text"), async (ctx) => {
       const text = ctx.message.text;
 
+      // Journal mode: treat next text message as journal entry
+      if (this.pendingJournal) {
+        this.pendingJournal = false;
+        try {
+          const count = await this.memoryExtractor.extractJournal(text);
+          if (count > 0) {
+            await ctx.reply(`Journal captured. ${count} memory${count > 1 ? "s" : ""} extracted.`);
+          } else {
+            await this.memoryService.store({
+              content: text,
+              type: "fact",
+              source: "manual",
+              importance: 0.6,
+              tags: ["journal"],
+            });
+            await ctx.reply("Journal entry stored.");
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          await ctx.reply(`Journal failed: ${msg}`);
+        }
+        return;
+      }
+
       // If it starts with "code:" or "code " treat as a code task
       if (/^code[\s:]/i.test(text)) {
         const task = text.replace(/^code[\s:]\s*/i, "");
@@ -517,8 +580,30 @@ export class TelegramBot {
 
       try {
         const text = await this.transcribeVoice(ctx, ctx.message.voice.file_id);
+
+        // Journal mode: extract as journal entry instead of chatting
+        if (this.pendingJournal) {
+          this.pendingJournal = false;
+          await ctx.reply(`Transcribed: "${truncate(text, 200)}"\n\nExtracting memories...`);
+          const count = await this.memoryExtractor.extractJournal(text);
+          if (count > 0) {
+            await ctx.reply(`Journal captured. ${count} memory${count > 1 ? "s" : ""} extracted.`);
+          } else {
+            await this.memoryService.store({
+              content: text,
+              type: "fact",
+              source: "manual",
+              importance: 0.6,
+              tags: ["journal", "voice-journal"],
+            });
+            await ctx.reply("Journal entry stored.");
+          }
+          return;
+        }
+
         await this.handleChat(ctx, `[Voice message] ${text}`);
       } catch (error) {
+        this.pendingJournal = false;
         const msg = error instanceof Error ? error.message : "Unknown error";
         await ctx.reply(`Voice transcription failed: ${msg}`);
       }

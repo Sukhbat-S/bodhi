@@ -7,19 +7,73 @@ import {
   getMemoryQuality,
   searchMemories,
   getCalendarToday,
+  createMemory,
+  getBriefings,
   type MemoryStats,
   type Insight,
   type Memory,
   type MemoryQuality,
   type CalendarEvent,
+  type Briefing,
 } from "../api";
 
-function getGreeting(): string {
+const reflectionPrompts = [
+  "What's one decision from this week you haven't revisited?",
+  "What pattern in your work would you like to change?",
+  "What did you learn recently that surprised you?",
+  "Is there something you've been avoiding thinking about?",
+  "What's working well right now that you should do more of?",
+  "Who have you been meaning to reach out to?",
+  "What would your future self thank you for doing today?",
+  "What assumption are you making that might be wrong?",
+  "What's the smallest step you can take on your biggest goal?",
+  "What did you spend time on this week that didn't matter?",
+  "What are you most proud of recently?",
+  "What would you do differently if you started this project today?",
+  "Is there a commitment you made that no longer serves you?",
+  "What skill gap is holding you back the most right now?",
+  "What would make tomorrow a great day?",
+];
+
+function getDailyPrompt(): string {
+  const dayIndex = Math.floor(Date.now() / 86400000) % reflectionPrompts.length;
+  return reflectionPrompts[dayIndex];
+}
+
+function getContextualGreeting(
+  ownerName: string,
+  stats: MemoryStats | null,
+  insights: Insight[],
+  quality: MemoryQuality | null
+): { greeting: string; subtext?: string } {
   const hour = new Date().getHours();
-  if (hour < 6) return "Good night";
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
+  const timeGreeting = hour < 6 ? "Good night" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const greeting = `${timeGreeting}, **${ownerName}**.`;
+
+  if (stats && stats.recentCount === 0 && hour < 12) {
+    return { greeting, subtext: "Quiet week so far. Ready to capture something?" };
+  }
+  const stalledInsight = insights.find((i) => i.type === "stalled");
+  if (stalledInsight) {
+    return { greeting, subtext: "Some decisions are waiting for you." };
+  }
+  if (quality?.creationRate && quality.creationRate.thisWeek > quality.creationRate.lastWeek * 1.5 && quality.creationRate.thisWeek > 5) {
+    return { greeting, subtext: "You've been thinking a lot this week." };
+  }
+  return { greeting };
+}
+
+function getInsightAction(insight: Insight): { label: string; to: string } {
+  switch (insight.type) {
+    case "stalled":
+      return { label: "Review decisions", to: "/chat?message=" + encodeURIComponent("Help me review my stalled decisions. Which ones still matter?") };
+    case "neglected":
+      return { label: "Resurface these", to: "/chat?message=" + encodeURIComponent("What important things have I stored but forgotten about?") };
+    case "trend":
+      return { label: "Explore this", to: "/chat?message=" + encodeURIComponent("I've been thinking about this a lot: " + insight.text + " — what patterns do you see?") };
+    case "activity":
+      return { label: "Reflect on this", to: "/chat?message=" + encodeURIComponent("My activity changed recently. What might be going on?") };
+  }
 }
 
 function timeAgo(dateStr: string): string {
@@ -40,7 +94,10 @@ export default function ReflectionPage() {
   const [decisions, setDecisions] = useState<Memory[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [ownerName, setOwnerName] = useState("User");
+  const [latestBriefing, setLatestBriefing] = useState<Briefing | null>(null);
   const [quickInput, setQuickInput] = useState("");
+  const [quickMode, setQuickMode] = useState<"chat" | "remember">("chat");
+  const [remembered, setRemembered] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -51,13 +108,20 @@ export default function ReflectionPage() {
       getMemoryQuality().then(setQuality),
       searchMemories("decision", 5).then((r) => setDecisions(r.memories)),
       getCalendarToday().then((r) => setEvents(r.events)).catch(() => {}),
+      getBriefings({ limit: 1 }).then((r) => setLatestBriefing(r.briefings[0] || null)).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
 
-  const handleQuickSubmit = (e: React.FormEvent) => {
+  const handleQuickSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (quickInput.trim()) {
+    if (!quickInput.trim()) return;
+    if (quickMode === "chat") {
       navigate(`/chat?message=${encodeURIComponent(quickInput.trim())}`);
+    } else {
+      await createMemory({ content: quickInput.trim(), importance: 0.7, tags: ["manual"] });
+      setQuickInput("");
+      setRemembered(true);
+      setTimeout(() => setRemembered(false), 2000);
     }
   };
 
@@ -73,27 +137,60 @@ export default function ReflectionPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 md:p-10 space-y-8">
+    <div className="max-w-4xl mx-auto p-6 md:p-10 space-y-8 fade-in-up">
       {/* Greeting */}
-      <div>
-        <h1 className="text-3xl font-light text-stone-200">
-          {getGreeting()}, <span className="font-medium">{ownerName}</span>.
-        </h1>
-      </div>
+      {(() => {
+        const { greeting, subtext } = getContextualGreeting(ownerName, stats, insights, quality);
+        return (
+          <div>
+            <h1 className="text-3xl font-light text-stone-200">
+              {greeting.split("**").map((part, i) =>
+                i % 2 === 1 ? <span key={i} className="font-medium">{part}</span> : part
+              )}
+            </h1>
+            {subtext && <p className="text-sm text-stone-500 mt-1">{subtext}</p>}
+          </div>
+        );
+      })()}
 
       {/* Insight Card */}
-      {heroInsight && (
-        <div className="relative rounded-xl border border-amber-500/30 bg-stone-900/80 p-6 shadow-[0_0_20px_rgba(217,119,6,0.08)]">
-          <div className="flex items-start gap-3">
-            <div className="mt-1 text-amber-500">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
+      {heroInsight && (() => {
+        const action = getInsightAction(heroInsight);
+        return (
+          <div className="relative rounded-xl border border-amber-500/30 bg-stone-900/80 p-6 shadow-[0_0_20px_rgba(217,119,6,0.08)] insight-glow">
+            <div className="flex items-start gap-3">
+              <div className="mt-1 text-amber-500">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="text-stone-300 text-sm leading-relaxed">{heroInsight.text}</p>
+                <button
+                  onClick={() => navigate(action.to)}
+                  className="mt-3 px-4 py-2 text-sm font-medium text-amber-400 bg-amber-500/10 rounded-lg hover:bg-amber-500/15 transition-colors"
+                >
+                  {action.label} &rarr;
+                </button>
+              </div>
             </div>
-            <p className="text-stone-300 text-sm leading-relaxed">{heroInsight.text}</p>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* Daily Reflection Prompt */}
+      <div className="rounded-xl border border-stone-800/40 bg-stone-900/30 p-5">
+        <p className="text-sm text-stone-400 italic leading-relaxed">{getDailyPrompt()}</p>
+        <button
+          onClick={() => {
+            setQuickInput(getDailyPrompt());
+            document.querySelector<HTMLInputElement>('input[placeholder]')?.focus();
+          }}
+          className="mt-3 text-xs text-amber-500/70 hover:text-amber-400 transition-colors"
+        >
+          Think about this &rarr;
+        </button>
+      </div>
 
       {/* Stats + Decisions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -124,7 +221,11 @@ export default function ReflectionPage() {
           {decisions.length > 0 ? (
             <ul className="space-y-3">
               {decisions.slice(0, 4).map((d) => (
-                <li key={d.id} className="flex items-start gap-2">
+                <li
+                  key={d.id}
+                  onClick={() => navigate(`/chat?message=${encodeURIComponent("Let's revisit this decision: \"" + d.content + "\" — is it still the right call?")}`)}
+                  className="flex items-start gap-2 cursor-pointer hover:bg-stone-800/30 rounded-lg p-1 -m-1 transition-colors"
+                >
                   <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                   <div className="min-w-0">
                     <p className="text-sm text-stone-300 line-clamp-1">{d.content}</p>
@@ -163,31 +264,50 @@ export default function ReflectionPage() {
         <div>
           <h2 className="text-xs uppercase tracking-wider text-stone-500 mb-4">Patterns</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {insights.slice(0, 4).map((insight, i) => (
-              <div
-                key={i}
-                className="rounded-xl border border-stone-800/60 bg-stone-900/50 p-4 hover:border-amber-500/20 transition-colors"
-              >
-                <div className="flex items-start gap-2">
-                  <span
-                    className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${
-                      insight.type === "trend"
-                        ? "bg-blue-400"
-                        : insight.type === "stalled"
-                          ? "bg-amber-400"
-                          : insight.type === "neglected"
-                            ? "bg-red-400"
-                            : "bg-emerald-400"
-                    }`}
-                  />
-                  <div>
-                    <p className="text-xs uppercase tracking-wider text-stone-500 mb-1">{insight.type}</p>
-                    <p className="text-sm text-stone-300 leading-relaxed">{insight.text}</p>
+            {insights.slice(0, 4).map((insight, i) => {
+              const action = getInsightAction(insight);
+              return (
+                <div
+                  key={i}
+                  onClick={() => navigate(action.to)}
+                  className="rounded-xl border border-stone-800/60 bg-stone-900/50 p-4 hover:border-amber-500/20 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-start gap-2">
+                    <span
+                      className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${
+                        insight.type === "trend"
+                          ? "bg-blue-400"
+                          : insight.type === "stalled"
+                            ? "bg-amber-400"
+                            : insight.type === "neglected"
+                              ? "bg-red-400"
+                              : "bg-emerald-400"
+                      }`}
+                    />
+                    <div className="flex-1">
+                      <p className="text-xs uppercase tracking-wider text-stone-500 mb-1">{insight.type}</p>
+                      <p className="text-sm text-stone-300 leading-relaxed">{insight.text}</p>
+                      <p className="text-xs text-amber-500/70 hover:text-amber-400 mt-2 transition-colors">{action.label} &rarr;</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
+        </div>
+      )}
+
+      {/* Latest Briefing */}
+      {latestBriefing && (
+        <div className="rounded-xl border border-stone-800/60 bg-stone-900/50 p-5">
+          <h2 className="text-xs uppercase tracking-wider text-stone-500 mb-3">Latest Briefing</h2>
+          <p className="text-sm text-stone-400 leading-relaxed line-clamp-3 whitespace-pre-line">{latestBriefing.content}</p>
+          <button
+            onClick={() => navigate("/briefings")}
+            className="mt-3 text-xs text-amber-500/70 hover:text-amber-400 transition-colors"
+          >
+            Read full briefing &rarr;
+          </button>
         </div>
       )}
 
@@ -196,31 +316,54 @@ export default function ReflectionPage() {
         <div className="rounded-xl border border-stone-800/60 bg-stone-900/50 p-5">
           <h2 className="text-xs uppercase tracking-wider text-stone-500 mb-4">Knowledge Areas</h2>
           <div className="flex flex-wrap gap-2">
-            {stats.topTags.slice(0, 10).map((t) => (
-              <span
-                key={t.tag}
-                className="px-3 py-1.5 text-xs rounded-full bg-stone-800/80 text-stone-400 border border-stone-700/50"
-              >
-                {t.tag} <span className="text-stone-500 ml-1">{t.count}</span>
-              </span>
-            ))}
+            {stats.topTags.slice(0, 10).map((t) => {
+              const trend = quality?.tagTrends?.find((tt) => tt.tag === t.tag);
+              const arrow = trend ? (trend.recent > trend.previous ? "text-emerald-400" : trend.recent < trend.previous ? "text-red-400" : "") : "";
+              const arrowChar = trend ? (trend.recent > trend.previous ? " ↑" : trend.recent < trend.previous ? " ↓" : "") : "";
+              return (
+                <span
+                  key={t.tag}
+                  className="px-3 py-1.5 text-xs rounded-full bg-stone-800/80 text-stone-400 border border-stone-700/50"
+                >
+                  {t.tag} <span className="text-stone-500 ml-1">{t.count}</span>
+                  {arrowChar && <span className={`ml-0.5 ${arrow}`}>{arrowChar}</span>}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
 
       {/* Quick Input */}
       <form onSubmit={handleQuickSubmit} className="relative">
+        <div className="flex items-center gap-2 mb-2">
+          <button
+            type="button"
+            onClick={() => setQuickMode("chat")}
+            className={`text-xs px-3 py-1 rounded-md transition-colors ${quickMode === "chat" ? "bg-amber-500/15 text-amber-400" : "text-stone-500 hover:text-stone-400"}`}
+          >
+            Chat
+          </button>
+          <button
+            type="button"
+            onClick={() => setQuickMode("remember")}
+            className={`text-xs px-3 py-1 rounded-md transition-colors ${quickMode === "remember" ? "bg-amber-500/15 text-amber-400" : "text-stone-500 hover:text-stone-400"}`}
+          >
+            Remember
+          </button>
+          {remembered && <span className="text-xs text-emerald-400 ml-2">Remembered</span>}
+        </div>
         <input
           type="text"
           value={quickInput}
           onChange={(e) => setQuickInput(e.target.value)}
-          placeholder="What's on your mind?"
+          placeholder={quickMode === "chat" ? "What's on your mind?" : "Write something to remember..."}
           className="w-full bg-stone-900/50 border border-stone-800/60 rounded-xl px-5 py-4 text-sm text-stone-300 placeholder-stone-600 focus:outline-none focus:border-amber-500/40 focus:shadow-[0_0_15px_rgba(217,119,6,0.06)] transition-all"
         />
         {quickInput.trim() && (
           <button
             type="submit"
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-amber-500 hover:text-amber-400 transition-colors"
+            className="absolute right-3 bottom-2 p-2 text-amber-500 hover:text-amber-400 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />

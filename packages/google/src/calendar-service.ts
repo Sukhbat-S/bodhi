@@ -5,7 +5,7 @@
 
 import { google } from "googleapis";
 import type { GoogleAuth } from "./auth.js";
-import type { CalendarEvent, FreeSlot } from "./types.js";
+import type { CalendarEvent, FreeSlot, EventInput, EventResult } from "./types.js";
 
 export class CalendarService {
   private calendar;
@@ -79,6 +79,60 @@ export class CalendarService {
     }
 
     return slots;
+  }
+
+  async createEvent(input: EventInput): Promise<EventResult> {
+    const res = await this.calendar.events.insert({
+      calendarId: "primary",
+      requestBody: {
+        summary: input.summary,
+        description: input.description,
+        location: input.location,
+        start: { dateTime: input.start },
+        end: { dateTime: input.end },
+        attendees: input.attendees?.map((email) => ({ email })),
+      },
+    });
+
+    const startTime = this.formatTime(input.start);
+    const day = this.formatDay(input.start);
+    return {
+      id: res.data.id!,
+      htmlLink: res.data.htmlLink || undefined,
+      message: `Event created: "${input.summary}" on ${day} at ${startTime}`,
+    };
+  }
+
+  async updateEvent(
+    eventId: string,
+    updates: Partial<EventInput>
+  ): Promise<EventResult> {
+    const body: Record<string, unknown> = {};
+    if (updates.summary) body.summary = updates.summary;
+    if (updates.description) body.description = updates.description;
+    if (updates.location) body.location = updates.location;
+    if (updates.start) body.start = { dateTime: updates.start };
+    if (updates.end) body.end = { dateTime: updates.end };
+    if (updates.attendees) body.attendees = updates.attendees.map((email) => ({ email }));
+
+    const res = await this.calendar.events.patch({
+      calendarId: "primary",
+      eventId,
+      requestBody: body,
+    });
+
+    return {
+      id: res.data.id!,
+      htmlLink: res.data.htmlLink || undefined,
+      message: `Event updated: "${res.data.summary}"`,
+    };
+  }
+
+  async deleteEvent(eventId: string): Promise<void> {
+    await this.calendar.events.delete({
+      calendarId: "primary",
+      eventId,
+    });
   }
 
   async ping(): Promise<boolean> {

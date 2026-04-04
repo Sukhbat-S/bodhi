@@ -814,6 +814,65 @@ async function main() {
     return c.json({ slots });
   });
 
+  // API: Gmail Actions (write)
+  app.post("/api/gmail/draft", async (c) => {
+    if (!gmailService) {
+      return c.json({ error: "Gmail not connected" }, 503);
+    }
+    const body = await c.req.json();
+    if (!body.to || !body.subject || !body.body) {
+      return c.json({ error: "Missing required fields: to, subject, body" }, 400);
+    }
+    const result = await gmailService.createDraft(body);
+    return c.json(result);
+  });
+
+  app.post("/api/gmail/draft/:id/send", async (c) => {
+    if (!gmailService) {
+      return c.json({ error: "Gmail not connected" }, 503);
+    }
+    const result = await gmailService.sendDraft(c.req.param("id"));
+    return c.json(result);
+  });
+
+  app.get("/api/gmail/message/:id/body", async (c) => {
+    if (!gmailService) {
+      return c.json({ error: "Gmail not connected" }, 503);
+    }
+    const body = await gmailService.getMessageBody(c.req.param("id"));
+    return c.json({ body });
+  });
+
+  // API: Calendar Actions (write)
+  app.post("/api/calendar/events", async (c) => {
+    if (!calendarService) {
+      return c.json({ error: "Calendar not connected" }, 503);
+    }
+    const body = await c.req.json();
+    if (!body.summary || !body.start || !body.end) {
+      return c.json({ error: "Missing required fields: summary, start, end" }, 400);
+    }
+    const result = await calendarService.createEvent(body);
+    return c.json(result);
+  });
+
+  app.patch("/api/calendar/events/:id", async (c) => {
+    if (!calendarService) {
+      return c.json({ error: "Calendar not connected" }, 503);
+    }
+    const body = await c.req.json();
+    const result = await calendarService.updateEvent(c.req.param("id"), body);
+    return c.json(result);
+  });
+
+  app.delete("/api/calendar/events/:id", async (c) => {
+    if (!calendarService) {
+      return c.json({ error: "Calendar not connected" }, 503);
+    }
+    await calendarService.deleteEvent(c.req.param("id"));
+    return c.json({ success: true });
+  });
+
   // API: GitHub
   app.get("/api/github/status", async (c) => {
     if (!githubService) {

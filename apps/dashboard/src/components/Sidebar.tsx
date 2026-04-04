@@ -242,6 +242,18 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+  const [mode, setMode] = useState<"personal" | "builder">(() => {
+    return (localStorage.getItem("sidebar-mode") as "personal" | "builder") || "personal";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sidebar-mode", mode);
+  }, [mode]);
+
+  const visibleGroups = mode === "personal"
+    ? navGroups.filter((g) => g.label === "Core" || g.label === "Knowledge")
+    : navGroups;
+
   return (
     <>
       {/* Mobile overlay */}
@@ -269,7 +281,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
-          {navGroups.map((group) =>
+          {visibleGroups.map((group) =>
             group.collapsible ? (
               <CollapsibleGroup key={group.label} group={group} onClose={onClose} />
             ) : (
@@ -287,8 +299,30 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           )}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-stone-800/60 space-y-2">
+        {/* Mode Toggle + Footer */}
+        <div className="p-4 border-t border-stone-800/60 space-y-3">
+          <div className="flex rounded-lg bg-stone-900/80 p-0.5">
+            <button
+              onClick={() => setMode("personal")}
+              className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${
+                mode === "personal"
+                  ? "bg-amber-500/15 text-amber-400 font-medium"
+                  : "text-stone-500 hover:text-stone-400"
+              }`}
+            >
+              Personal
+            </button>
+            <button
+              onClick={() => setMode("builder")}
+              className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${
+                mode === "builder"
+                  ? "bg-amber-500/15 text-amber-400 font-medium"
+                  : "text-stone-500 hover:text-stone-400"
+              }`}
+            >
+              Builder
+            </button>
+          </div>
           <NotificationToggle />
           <p className="text-xs text-stone-600">v0.9.0</p>
         </div>

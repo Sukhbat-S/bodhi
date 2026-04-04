@@ -5,7 +5,7 @@
 
 import { google } from "googleapis";
 import type { GoogleAuth } from "./auth.js";
-import type { EmailSummary } from "./types.js";
+import type { EmailSummary, DraftInput, DraftResult } from "./types.js";
 
 export class GmailService {
   private gmail;
@@ -67,6 +67,77 @@ export class GmailService {
     } catch {
       return false;
     }
+  }
+
+  async getMessageBody(messageId: string): Promise<string | null> {
+    try {
+      const res = await this.gmail.users.messages.get({
+        userId: "me",
+        id: messageId,
+        format: "full",
+      });
+
+      const payload = res.data.payload;
+      if (!payload) return null;
+
+      // Try plain text first, then HTML
+      const getBody = (part: typeof payload): string | null => {
+        if (part.mimeType === "text/plain" && part.body?.data) {
+          return Buffer.from(part.body.data, "base64").toString("utf-8");
+        }
+        if (part.parts) {
+          for (const sub of part.parts) {
+            const text = getBody(sub);
+            if (text) return text;
+          }
+        }
+        if (part.body?.data) {
+          return Buffer.from(part.body.data, "base64").toString("utf-8");
+        }
+        return null;
+      };
+
+      return getBody(payload);
+    } catch {
+      return null;
+    }
+  }
+
+  async createDraft(input: DraftInput): Promise<DraftResult> {
+    const headers = [
+      `To: ${input.to}`,
+      `Subject: ${input.subject}`,
+      `Content-Type: text/plain; charset="UTF-8"`,
+    ];
+    if (input.cc) headers.push(`Cc: ${input.cc}`);
+    if (input.bcc) headers.push(`Bcc: ${input.bcc}`);
+
+    const raw = Buffer.from(
+      headers.join("\r\n") + "\r\n\r\n" + input.body
+    ).toString("base64url");
+
+    const res = await this.gmail.users.drafts.create({
+      userId: "me",
+      requestBody: { message: { raw } },
+    });
+
+    return {
+      id: res.data.id!,
+      threadId: res.data.message?.threadId || undefined,
+      message: `Draft created: "${input.subject}" to ${input.to}`,
+    };
+  }
+
+  async sendDraft(draftId: string): Promise<{ messageId: string; threadId: string }> {
+    const res = await this.gmail.users.drafts.send({
+      userId: "me",
+      requestBody: { id: draftId },
+    });
+
+    return {
+      messageId: res.data.id!,
+      threadId: res.data.threadId!,
+    };
   }
 
   async getBriefingSummary(): Promise<string> {

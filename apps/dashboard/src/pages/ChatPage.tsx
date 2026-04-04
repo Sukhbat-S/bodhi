@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   streamChat,
   getConversations,
@@ -24,18 +25,22 @@ function relativeTime(dateStr: string): string {
 }
 
 export default function ChatPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const autoSentRef = useRef(false);
 
   // Conversation state
   const [threads, setThreads] = useState<ConversationThread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -60,6 +65,55 @@ export default function ChatPage() {
   useEffect(() => {
     loadThreads();
   }, [loadThreads]);
+
+  // Auto-send message from URL query param
+  useEffect(() => {
+    const msg = searchParams.get("message");
+    if (msg && !autoSentRef.current && !streaming) {
+      autoSentRef.current = true;
+      setSearchParams({}, { replace: true });
+      setInput("");
+      setMessages([{ role: "user", content: msg }]);
+      setStreaming(true);
+      setStreamingContent("");
+      let accumulated = "";
+      streamChat(
+        msg,
+        (chunk) => { accumulated += chunk; setStreamingContent(accumulated); },
+        (full, threadId) => {
+          setMessages((prev) => [...prev, { role: "assistant", content: full || accumulated }]);
+          setStreamingContent("");
+          setStreaming(false);
+          if (threadId) setActiveThreadId(threadId);
+          loadThreads();
+        },
+      ).then((tid) => { if (tid && !activeThreadId) setActiveThreadId(tid); })
+       .catch((err) => {
+         setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${err instanceof Error ? err.message : "Failed"}` }]);
+         setStreamingContent("");
+         setStreaming(false);
+       });
+    }
+  }, [searchParams]);
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    for (const id of ids) {
+      try { await deleteConversation(id); } catch { /* skip */ }
+    }
+    setThreads((prev) => prev.filter((t) => !selectedIds.has(t.id)));
+    if (activeThreadId && selectedIds.has(activeThreadId)) handleNewChat();
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const handleNewChat = () => {
     setActiveThreadId(null);
@@ -158,13 +212,57 @@ export default function ChatPage() {
     <div className="flex h-full">
       {/* Conversation list panel */}
       <div className="w-64 border-r border-stone-800 flex flex-col bg-stone-950/50">
-        <div className="p-3 border-b border-stone-800">
-          <button
-            onClick={handleNewChat}
-            className="w-full px-3 py-2 text-sm font-medium text-stone-300 bg-stone-800 hover:bg-stone-700 rounded-lg transition-colors"
-          >
-            + New chat
-          </button>
+        <div className="p-3 border-b border-stone-800 space-y-2">
+          <div className="flex gap-2">
+            <button
+              onClick={handleNewChat}
+              className="flex-1 px-3 py-2 text-sm font-medium text-stone-300 bg-stone-800 hover:bg-stone-700 rounded-lg transition-colors"
+            >
+              + New chat
+            </button>
+            {threads.length > 0 && (
+              <button
+                onClick={() => {
+                  if (selectMode) {
+                    setSelectMode(false);
+                    setSelectedIds(new Set());
+                  } else {
+                    setSelectMode(true);
+                  }
+                }}
+                className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  selectMode
+                    ? "text-amber-400 bg-amber-500/15 hover:bg-amber-500/25"
+                    : "text-stone-500 bg-stone-800 hover:bg-stone-700 hover:text-stone-300"
+                }`}
+              >
+                {selectMode ? "Cancel" : "Select"}
+              </button>
+            )}
+          </div>
+          {selectMode && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (selectedIds.size === threads.length) {
+                    setSelectedIds(new Set());
+                  } else {
+                    setSelectedIds(new Set(threads.map((t) => t.id)));
+                  }
+                }}
+                className="flex-1 px-2 py-1.5 text-xs text-stone-400 hover:text-stone-300 bg-stone-900 rounded transition-colors"
+              >
+                {selectedIds.size === threads.length ? "Deselect all" : "Select all"}
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={selectedIds.size === 0}
+                className="flex-1 px-2 py-1.5 text-xs text-red-400 hover:text-red-300 bg-stone-900 hover:bg-red-500/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Delete ({selectedIds.size})
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -176,14 +274,29 @@ export default function ChatPage() {
             threads.map((thread) => (
               <div
                 key={thread.id}
-                onClick={() => handleSelectThread(thread.id)}
+                onClick={() => selectMode ? toggleSelect(thread.id) : handleSelectThread(thread.id)}
                 className={`group relative px-3 py-2.5 cursor-pointer border-b border-stone-900 transition-colors ${
-                  activeThreadId === thread.id
+                  selectMode && selectedIds.has(thread.id)
+                    ? "bg-amber-500/10"
+                    : activeThreadId === thread.id
                     ? "bg-stone-800/60"
                     : "hover:bg-stone-900/50"
                 }`}
               >
                 <div className="text-sm text-stone-300 truncate pr-6 flex items-center gap-1.5">
+                  {selectMode && (
+                    <span className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                      selectedIds.has(thread.id)
+                        ? "bg-amber-500 border-amber-500"
+                        : "border-stone-600"
+                    }`}>
+                      {selectedIds.has(thread.id) && (
+                        <svg className="w-3 h-3 text-stone-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </span>
+                  )}
                   <span className="truncate">{thread.title || "Untitled"}</span>
                   <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${
                     thread.channel === "telegram"
@@ -197,8 +310,8 @@ export default function ChatPage() {
                   {relativeTime(thread.lastActiveAt)}
                 </div>
 
-                {/* Delete button */}
-                {deletingId === thread.id ? (
+                {/* Delete button (hidden in select mode) */}
+                {selectMode ? null : deletingId === thread.id ? (
                   <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
                     <button
                       onClick={(e) => {

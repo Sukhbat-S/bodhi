@@ -22,6 +22,25 @@
   }
 }
 
+/* Reflection page animations */
+@keyframes insight-glow {
+  0%, 100% { border-color: rgba(217, 119, 6, 0.2); }
+  50% { border-color: rgba(217, 119, 6, 0.4); }
+}
+
+.insight-glow {
+  animation: insight-glow 4s ease-in-out infinite;
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in-up {
+  animation: fade-in-up 0.4s ease-out;
+}
+
 /* Ecosystem graph animations */
 @keyframes hub-pulse {
   0%, 100% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.2), 0 0 40px rgba(139, 92, 246, 0.1); }

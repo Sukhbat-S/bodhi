@@ -166,6 +166,134 @@ export class GmailService {
     return parts.join("\n\n");
   }
 
+  // ---- Organization / Bulk Operations ----
+
+  /**
+   * Search and return only message IDs (lightweight, for bulk ops).
+   * Paginates automatically to collect all matching IDs up to maxResults.
+   */
+  async searchIds(query: string, maxResults = 500): Promise<string[]> {
+    const ids: string[] = [];
+    let pageToken: string | undefined;
+
+    while (ids.length < maxResults) {
+      const res = await this.gmail.users.messages.list({
+        userId: "me",
+        q: query,
+        maxResults: Math.min(500, maxResults - ids.length),
+        pageToken,
+      });
+
+      if (!res.data.messages?.length) break;
+      ids.push(...res.data.messages.map((m) => m.id!));
+
+      pageToken = res.data.nextPageToken || undefined;
+      if (!pageToken) break;
+    }
+
+    return ids;
+  }
+
+  /**
+   * Bulk modify messages (add/remove labels). Processes in batches of 1000.
+   */
+  async batchModify(
+    messageIds: string[],
+    addLabelIds: string[] = [],
+    removeLabelIds: string[] = [],
+  ): Promise<number> {
+    let processed = 0;
+    for (let i = 0; i < messageIds.length; i += 1000) {
+      const batch = messageIds.slice(i, i + 1000);
+      await this.gmail.users.messages.batchModify({
+        userId: "me",
+        requestBody: {
+          ids: batch,
+          addLabelIds,
+          removeLabelIds,
+        },
+      });
+      processed += batch.length;
+    }
+    return processed;
+  }
+
+  /** Mark messages as read (remove UNREAD label). */
+  async markAsRead(messageIds: string[]): Promise<number> {
+    return this.batchModify(messageIds, [], ["UNREAD"]);
+  }
+
+  /** Archive messages (remove from INBOX). */
+  async archive(messageIds: string[]): Promise<number> {
+    return this.batchModify(messageIds, [], ["INBOX"]);
+  }
+
+  /** Search + mark as read in one call. Returns count of affected messages. */
+  async searchAndMarkRead(query: string, maxResults = 5000): Promise<number> {
+    const ids = await this.searchIds(`${query} is:unread`, maxResults);
+    if (ids.length === 0) return 0;
+    return this.markAsRead(ids);
+  }
+
+  /** Search + archive in one call. Returns count of affected messages. */
+  async searchAndArchive(query: string, maxResults = 5000): Promise<number> {
+    const ids = await this.searchIds(`${query} label:inbox`, maxResults);
+    if (ids.length === 0) return 0;
+    return this.archive(ids);
+  }
+
+  /** List all Gmail labels. */
+  async getLabels(): Promise<{ id: string; name: string; type: string }[]> {
+    const res = await this.gmail.users.labels.list({ userId: "me" });
+    return (res.data.labels || []).map((l) => ({
+      id: l.id!,
+      name: l.name!,
+      type: l.type || "user",
+    }));
+  }
+
+  /** Create a Gmail label. Returns the label ID. */
+  async createLabel(name: string): Promise<string> {
+    const res = await this.gmail.users.labels.create({
+      userId: "me",
+      requestBody: {
+        name,
+        labelListVisibility: "labelShow",
+        messageListVisibility: "show",
+      },
+    });
+    return res.data.id!;
+  }
+
+  /** Create a Gmail filter (auto-sort rule). */
+  async createFilter(criteria: {
+    from?: string;
+    to?: string;
+    subject?: string;
+    query?: string;
+  }, actions: {
+    addLabelIds?: string[];
+    removeLabelIds?: string[];
+    skipInbox?: boolean;
+    markRead?: boolean;
+  }): Promise<string> {
+    const actionBody: Record<string, unknown> = {};
+    if (actions.addLabelIds) actionBody.addLabelIds = actions.addLabelIds;
+    const removals = [...(actions.removeLabelIds || [])];
+    if (actions.skipInbox) removals.push("INBOX");
+    if (actions.markRead) removals.push("UNREAD");
+    if (removals.length > 0) actionBody.removeLabelIds = removals;
+
+    const res = await this.gmail.users.settings.filters.create({
+      userId: "me",
+      requestBody: {
+        criteria,
+        action: actionBody,
+      },
+    });
+    return res.data.id!;
+  }
+
   private async getMessageMetadata(messageId: string): Promise<EmailSummary | null> {
     try {
       const res = await this.gmail.users.messages.get({

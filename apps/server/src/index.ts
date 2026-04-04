@@ -843,6 +843,45 @@ async function main() {
     return c.json({ body });
   });
 
+  // API: Gmail Organization (bulk ops, labels, filters)
+  app.post("/api/gmail/batch/read", async (c) => {
+    if (!gmailService) return c.json({ error: "Gmail not connected" }, 503);
+    const { query, maxResults } = await c.req.json();
+    if (!query) return c.json({ error: "Missing query" }, 400);
+    const count = await gmailService.searchAndMarkRead(query, maxResults || 5000);
+    return c.json({ success: true, count, query });
+  });
+
+  app.post("/api/gmail/batch/archive", async (c) => {
+    if (!gmailService) return c.json({ error: "Gmail not connected" }, 503);
+    const { query, maxResults } = await c.req.json();
+    if (!query) return c.json({ error: "Missing query" }, 400);
+    const count = await gmailService.searchAndArchive(query, maxResults || 5000);
+    return c.json({ success: true, count, query });
+  });
+
+  app.get("/api/gmail/labels", async (c) => {
+    if (!gmailService) return c.json({ error: "Gmail not connected" }, 503);
+    const labels = await gmailService.getLabels();
+    return c.json({ labels });
+  });
+
+  app.post("/api/gmail/labels", async (c) => {
+    if (!gmailService) return c.json({ error: "Gmail not connected" }, 503);
+    const { name } = await c.req.json();
+    if (!name) return c.json({ error: "Missing label name" }, 400);
+    const id = await gmailService.createLabel(name);
+    return c.json({ id, name });
+  });
+
+  app.post("/api/gmail/filters", async (c) => {
+    if (!gmailService) return c.json({ error: "Gmail not connected" }, 503);
+    const { criteria, actions } = await c.req.json();
+    if (!criteria) return c.json({ error: "Missing criteria" }, 400);
+    const id = await gmailService.createFilter(criteria, actions || {});
+    return c.json({ id });
+  });
+
   // API: Calendar Actions (write)
   app.post("/api/calendar/events", async (c) => {
     if (!calendarService) {

@@ -57,6 +57,9 @@ const envSchema = z.object({
   VAPID_SUBJECT: z.string().optional(), // e.g. "mailto:sukhbat@example.com"
   PUBLIC_URL: z.string().optional(), // e.g. "https://bodhi.yourdomain.com"
 
+  // Owner
+  BODHI_OWNER_NAME: z.string().default("User"),
+
   // Server
   PORT: z.coerce.number().default(3000),
   NODE_ENV: z

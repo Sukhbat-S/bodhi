@@ -974,6 +974,7 @@ async function main() {
       gmail: gmailService ? "connected" : googleAuth ? "not authenticated" : "not configured",
       calendar: calendarService ? "connected" : googleAuth ? "not authenticated" : "not configured",
       scheduler: scheduler.getStatus().running ? "running" : "stopped",
+      ownerName: process.env.BODHI_OWNER_NAME || "User",
       uptime: process.uptime(),
       channels: {
         telegram: "connected",

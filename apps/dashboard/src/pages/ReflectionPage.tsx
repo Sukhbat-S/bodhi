@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  getStatus,
   getMemoryStats,
   getMemoryInsights,
   getMemoryQuality,
@@ -38,11 +39,13 @@ export default function ReflectionPage() {
   const [quality, setQuality] = useState<MemoryQuality | null>(null);
   const [decisions, setDecisions] = useState<Memory[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [ownerName, setOwnerName] = useState("User");
   const [quickInput, setQuickInput] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.allSettled([
+      getStatus().then((s) => setOwnerName(s.ownerName || "User")),
       getMemoryStats().then(setStats),
       getMemoryInsights().then((r) => setInsights(r.insights)),
       getMemoryQuality().then(setQuality),
@@ -74,7 +77,7 @@ export default function ReflectionPage() {
       {/* Greeting */}
       <div>
         <h1 className="text-3xl font-light text-stone-200">
-          {getGreeting()}, <span className="font-medium">Sukhbat</span>.
+          {getGreeting()}, <span className="font-medium">{ownerName}</span>.
         </h1>
       </div>
 

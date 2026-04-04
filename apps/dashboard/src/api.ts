@@ -30,6 +30,7 @@ export interface StatusResponse {
   vercel?: string;
   supabase?: string;
   scheduler?: string;
+  ownerName?: string;
   uptime: number;
   channels: Record<string, string>;
 }

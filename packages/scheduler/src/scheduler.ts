@@ -12,7 +12,7 @@ import type { MemorySynthesizer } from "@seneca/memory";
 import type { InsightGenerator, Insight } from "@seneca/memory";
 
 export type BriefingType = "morning" | "evening" | "weekly";
-export type SchedulerJobType = BriefingType | "synthesis";
+export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage";
 
 interface TelegramSender {
   sendProactiveMessage(text: string): Promise<void>;
@@ -24,6 +24,8 @@ interface NotionDataSource {
 
 interface GmailDataSource {
   getBriefingSummary(): Promise<string>;
+  getRecent(limit: number): Promise<{ id: string; from: string; subject: string; isUnread: boolean; date: string; snippet: string }[]>;
+  getMessageBody?(messageId: string): Promise<string | null>;
 }
 
 interface CalendarDataSource {
@@ -142,6 +144,33 @@ Rules:
 - Use Markdown formatting`,
 };
 
+const INBOX_TRIAGE_PROMPT = `You are triaging Sukhbat's email inbox. Categorize each email and provide a structured summary.
+
+For each email, assign ONE category:
+- **ACTION** — needs a response or task from Sukhbat (highlight these first)
+- **FYI** — worth knowing but no action needed
+- **NOISE** — newsletters, promos, automated notifications (just count these)
+
+Rules:
+- Lead with ACTION items — these are the only emails that matter
+- For FYI, give 1 line each
+- For NOISE, just say "X newsletters/promos skipped"
+- If you have memory context about a sender or project, mention why the email matters
+- Be blunt and concise — this is a triage, not a summary
+- Under 300 words total
+- Use Markdown formatting
+
+Output format:
+**Inbox Triage** (X unread)
+
+**Action Required:**
+- [sender] subject — why it needs attention
+
+**FYI:**
+- [sender] subject — one line
+
+**Skipped:** X newsletters, Y promos, Z notifications`;
+
 export class Scheduler {
   private config: SchedulerConfig;
   private tasks: ScheduledTask[] = [];
@@ -152,7 +181,7 @@ export class Scheduler {
     this.config = config;
 
     // Initialize job records
-    for (const type of ["morning", "evening", "weekly", "synthesis"] as SchedulerJobType[]) {
+    for (const type of ["morning", "evening", "weekly", "synthesis", "inbox-triage"] as SchedulerJobType[]) {
       this.jobs.set(type, {
         type,
         lastRun: null,
@@ -192,6 +221,15 @@ export class Scheduler {
       })
     );
 
+    // Inbox triage: 09:00 daily
+    if (this.config.gmail) {
+      this.tasks.push(
+        cron.schedule("0 9 * * *", () => this.runInboxTriage(), {
+          timezone: tz,
+        })
+      );
+    }
+
     // Memory synthesis: daily at 03:00 (dedup, connect, decay, promote)
     if (this.config.synthesizer) {
       this.tasks.push(
@@ -223,6 +261,9 @@ export class Scheduler {
   async trigger(type: SchedulerJobType): Promise<{ status: string; content?: string; error?: string }> {
     if (type === "synthesis") {
       return this.runSynthesis();
+    }
+    if (type === "inbox-triage") {
+      return this.runInboxTriage();
     }
     return this.runBriefing(type);
   }
@@ -270,6 +311,87 @@ export class Scheduler {
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error(`[scheduler] Synthesis failed: ${errMsg}`);
+
+      job.lastRun = new Date();
+      job.lastResult = "error";
+      job.lastDurationMs = Date.now() - startTime;
+
+      return { status: "error", error: errMsg };
+    }
+  }
+
+  /**
+   * Inbox triage: fetch recent unread emails, generate AI categorization, send via Telegram.
+   */
+  private async runInboxTriage(): Promise<{ status: string; content?: string; error?: string }> {
+    const startTime = Date.now();
+    const job = this.jobs.get("inbox-triage")!;
+
+    if (!this.config.gmail) {
+      return { status: "skipped", error: "Gmail not configured" };
+    }
+
+    try {
+      const emails = await this.config.gmail.getRecent(20);
+      const unreadEmails = emails.filter((e) => e.isUnread);
+
+      if (unreadEmails.length === 0) {
+        job.lastRun = new Date();
+        job.lastResult = "skipped";
+        job.lastDurationMs = Date.now() - startTime;
+        return { status: "skipped", content: "No unread emails" };
+      }
+
+      // Build email list for the prompt
+      const emailLines = unreadEmails.map((e, i) => {
+        return `${i + 1}. From: ${e.from} | Subject: ${e.subject} | ${e.date}\n   Preview: ${e.snippet.slice(0, 120)}`;
+      }).join("\n\n");
+
+      // Get memory context for relevant senders/topics
+      let memoryContext = "";
+      try {
+        const topSenders = [...new Set(unreadEmails.slice(0, 5).map((e) => e.from))].join(", ");
+        const context = await this.config.contextEngine.gather(`email from ${topSenders}`);
+        if (context.fragments.length > 0) {
+          memoryContext = `\n\n## Memory Context\n\n${context.fragments.map((f) => f.content).join("\n")}`;
+        }
+      } catch {
+        // Non-critical
+      }
+
+      const prompt = `${INBOX_TRIAGE_PROMPT}
+
+## Unread Emails (${unreadEmails.length})
+
+${emailLines}${memoryContext}
+
+Triage these emails now.`;
+
+      console.log(`[scheduler] Generating inbox triage for ${unreadEmails.length} unread emails...`);
+      const response = await this.config.agent.chat(prompt);
+
+      const message = `📬 Inbox Triage\n\n${response.content}`;
+      await this.config.telegram.sendProactiveMessage(message);
+
+      if (this.config.briefingStore) {
+        try {
+          await this.config.briefingStore.save("morning", `[Inbox Triage]\n\n${response.content}`);
+        } catch {
+          // Non-critical
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+      console.log(`[scheduler] Inbox triage sent (${response.content.length} chars, ${(durationMs / 1000).toFixed(1)}s)`);
+
+      job.lastRun = new Date();
+      job.lastResult = "sent";
+      job.lastDurationMs = durationMs;
+
+      return { status: "sent", content: response.content };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] Inbox triage failed: ${errMsg}`);
 
       job.lastRun = new Date();
       job.lastResult = "error";

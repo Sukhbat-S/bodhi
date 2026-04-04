@@ -652,11 +652,12 @@ async function main() {
   });
 
   app.post("/api/scheduler/trigger", async (c) => {
-    const body = await c.req.json<{ type: "morning" | "evening" | "weekly" | "synthesis" }>();
-    if (!body.type || !["morning", "evening", "weekly", "synthesis"].includes(body.type)) {
-      return c.json({ error: "type must be 'morning', 'evening', 'weekly', or 'synthesis'" }, 400);
+    const body = await c.req.json<{ type: string }>();
+    const validTypes = ["morning", "evening", "weekly", "synthesis", "inbox-triage"];
+    if (!body.type || !validTypes.includes(body.type)) {
+      return c.json({ error: `type must be one of: ${validTypes.join(", ")}` }, 400);
     }
-    const result = await scheduler.trigger(body.type);
+    const result = await scheduler.trigger(body.type as "morning" | "evening" | "weekly" | "synthesis" | "inbox-triage");
     return c.json(result);
   });
 
@@ -1055,6 +1056,131 @@ async function main() {
 
     const results = await query;
     return c.json({ briefings: results, limit, offset });
+  });
+
+  // API: Webhooks — real-time event ingestion
+  app.post("/api/webhooks/github", async (c) => {
+    const event = c.req.header("x-github-event") || "unknown";
+    const body = await c.req.json();
+
+    let content = "";
+    let importance = 0.5;
+    let notify = false;
+
+    switch (event) {
+      case "push": {
+        const branch = body.ref?.replace("refs/heads/", "") || "unknown";
+        const commits = body.commits?.length || 0;
+        const pusher = body.pusher?.name || "unknown";
+        content = `GitHub push: ${pusher} pushed ${commits} commit(s) to ${body.repository?.name}/${branch}`;
+        break;
+      }
+      case "pull_request": {
+        const pr = body.pull_request;
+        const action = body.action;
+        content = `GitHub PR ${action}: "${pr?.title}" (#${pr?.number}) in ${body.repository?.name} by ${pr?.user?.login}`;
+        importance = action === "opened" || action === "closed" ? 0.7 : 0.5;
+        notify = action === "opened" || (action === "closed" && pr?.merged);
+        break;
+      }
+      case "issues": {
+        const issue = body.issue;
+        content = `GitHub issue ${body.action}: "${issue?.title}" (#${issue?.number}) in ${body.repository?.name}`;
+        notify = body.action === "opened";
+        break;
+      }
+      case "workflow_run": {
+        const run = body.workflow_run;
+        if (run?.conclusion === "failure") {
+          content = `GitHub CI failed: "${run.name}" on ${body.repository?.name}/${run.head_branch}`;
+          importance = 0.8;
+          notify = true;
+        } else if (run?.conclusion === "success") {
+          content = `GitHub CI passed: "${run.name}" on ${body.repository?.name}/${run.head_branch}`;
+        } else {
+          content = `GitHub workflow ${body.action}: "${run?.name}" on ${body.repository?.name}`;
+        }
+        break;
+      }
+      default:
+        content = `GitHub event: ${event} on ${body.repository?.name || "unknown repo"}`;
+    }
+
+    if (content) {
+      try {
+        await memoryService.store({
+          content,
+          type: "event",
+          source: "extraction",
+          importance,
+          tags: ["github", "webhook", event],
+        });
+      } catch { /* non-critical */ }
+
+      if (notify && telegramBot) {
+        telegramBot.sendProactiveMessage(`🔔 ${content}`).catch(() => {});
+      }
+    }
+
+    return c.json({ ok: true, event });
+  });
+
+  app.post("/api/webhooks/vercel", async (c) => {
+    const body = await c.req.json();
+    const type = body.type || "unknown";
+
+    let content = "";
+    let notify = false;
+
+    if (type === "deployment.created") {
+      const d = body.payload?.deployment;
+      content = `Vercel deploy started: ${d?.name} (${d?.meta?.githubCommitMessage || "no commit msg"})`;
+    } else if (type === "deployment.succeeded") {
+      const d = body.payload?.deployment;
+      content = `Vercel deploy succeeded: ${d?.name} → ${d?.url}`;
+    } else if (type === "deployment.error") {
+      const d = body.payload?.deployment;
+      content = `Vercel deploy FAILED: ${d?.name}`;
+      notify = true;
+    } else {
+      content = `Vercel event: ${type}`;
+    }
+
+    if (content) {
+      try {
+        await memoryService.store({
+          content,
+          type: "event",
+          source: "extraction",
+          importance: notify ? 0.8 : 0.5,
+          tags: ["vercel", "webhook", type],
+        });
+      } catch { /* non-critical */ }
+
+      if (notify && telegramBot) {
+        telegramBot.sendProactiveMessage(`🔔 ${content}`).catch(() => {});
+      }
+    }
+
+    return c.json({ ok: true, type });
+  });
+
+  app.post("/api/webhooks/supabase", async (c) => {
+    const body = await c.req.json();
+    const type = body.type || "unknown";
+
+    const content = `Supabase event: ${type} — ${JSON.stringify(body.record || body.payload || {}).slice(0, 200)}`;
+    try {
+      await memoryService.store({
+        content,
+        type: "event",
+        source: "extraction",
+        importance: 0.5,
+        tags: ["supabase", "webhook", type],
+      });
+    } catch { /* non-critical */ }
+
+    return c.json({ ok: true, type });
   });
 
   // API: Status

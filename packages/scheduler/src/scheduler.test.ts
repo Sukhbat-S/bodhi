@@ -196,6 +196,7 @@ describe("Scheduler", () => {
     it("includes Gmail data when gmail source is configured", async () => {
       const gmail = {
         getBriefingSummary: vi.fn().mockResolvedValue("3 unread emails"),
+        getRecent: vi.fn().mockResolvedValue([]),
       };
       const config = makeConfig({ gmail });
       const scheduler = new Scheduler(config);

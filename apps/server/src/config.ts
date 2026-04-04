@@ -48,6 +48,11 @@ const envSchema = z.object({
   SUPABASE_ACCESS_TOKEN: z.string().optional(),
   SUPABASE_PROJECT_REF: z.string().optional(),
 
+  // Meta / Social (optional — enables Facebook + Instagram posting)
+  META_PAGE_ID: z.string().optional(),
+  META_PAGE_ACCESS_TOKEN: z.string().optional(),
+  META_INSTAGRAM_ACCOUNT_ID: z.string().optional(),
+
   // Claude Code CLI auth (optional — env var bypasses file-based OAuth)
   CLAUDE_CODE_OAUTH_TOKEN: z.string().optional(),
 

@@ -37,6 +37,7 @@ import { ProjectKnowledgeProvider } from "@seneca/knowledge";
 import { GitHubService, GitHubContextProvider } from "@seneca/github";
 import { VercelService, VercelContextProvider } from "@seneca/vercel";
 import { SupabaseAwarenessService, SupabaseAwarenessProvider } from "@seneca/supabase-awareness";
+import { MetaService } from "@seneca/social";
 import { desc } from "drizzle-orm";
 import { briefings } from "@seneca/db";
 import { loadConfig } from "./config.js";
@@ -200,7 +201,23 @@ async function main() {
     console.log("  Supabase Awareness: skipped (no SUPABASE_ACCESS_TOKEN)");
   }
 
-  // 6f. Initialize Push Notifications (optional — PWA Web Push)
+  // 6f. Initialize Meta / Social (optional — Facebook + Instagram posting)
+  let metaService: MetaService | null = null;
+
+  if (config.META_PAGE_ACCESS_TOKEN && config.META_PAGE_ID) {
+    metaService = new MetaService({
+      pageId: config.META_PAGE_ID,
+      pageAccessToken: config.META_PAGE_ACCESS_TOKEN,
+      instagramAccountId: config.META_INSTAGRAM_ACCOUNT_ID,
+    });
+
+    const connected = await metaService.ping().catch(() => false);
+    console.log(`  Meta: ${connected ? "connected" : "FAILED to connect"}`);
+  } else {
+    console.log("  Meta: skipped (no META_PAGE_ACCESS_TOKEN)");
+  }
+
+  // 6g. Initialize Push Notifications (optional — PWA Web Push)
   let pushService: PushService | null = null;
 
   if (config.VAPID_PUBLIC_KEY && config.VAPID_PRIVATE_KEY && config.VAPID_SUBJECT) {
@@ -1070,6 +1087,79 @@ async function main() {
     return c.json(data);
   });
 
+  // API: Social / Meta
+  app.get("/api/social/status", async (c) => {
+    if (!metaService) {
+      return c.json({ connected: false, reason: "META_PAGE_ACCESS_TOKEN not configured" });
+    }
+    const connected = await metaService.ping().catch(() => false);
+    return c.json({ connected });
+  });
+
+  app.post("/api/post", async (c) => {
+    const body = await c.req.json<{ content: string; platforms?: string[]; imageUrl?: string }>();
+    const { content, platforms, imageUrl } = body;
+
+    if (!content) {
+      return c.json({ error: "content is required" }, 400);
+    }
+
+    // Use Bridge (via Agent) to adapt content for each platform
+    const adaptPrompt = `You are a social media content adapter. Given the following content idea, create platform-adapted versions.
+
+Content: "${content}"
+
+Create 3 versions:
+1. **Twitter/X** (English): Engaging, max 280 characters. No hashtags unless they add value. Punchy and authentic.
+2. **Facebook** (Mongolian): Natural conversational tone for a Page post. Can be longer. Written in Mongolian language.
+3. **Instagram** (Mongolian): Caption style with relevant hashtags at the end. Written in Mongolian language.
+
+Return ONLY valid JSON (no markdown, no code fences):
+{"twitter": "...", "facebook": "...", "instagram": "..."}`;
+
+    let adaptedContent = { twitter: content, facebook: content, instagram: content };
+
+    try {
+      const response = await agent.chat(adaptPrompt);
+      // Extract JSON from response (may have markdown fences)
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        adaptedContent = JSON.parse(jsonMatch[0]);
+      }
+    } catch (err) {
+      console.error("[post] Failed to adapt content:", err instanceof Error ? err.message : err);
+      // Fall back to raw content for all platforms
+    }
+
+    const results: Array<{ platform: string; success: boolean; postId?: string; postUrl?: string; error?: string }> = [];
+    const targetPlatforms = platforms || ["twitter", "facebook", "instagram"];
+
+    // Post to Facebook
+    if (targetPlatforms.includes("facebook") && metaService) {
+      const fbResult = await metaService.postToPage(adaptedContent.facebook, { imageUrl });
+      results.push(fbResult);
+    } else if (targetPlatforms.includes("facebook") && !metaService) {
+      results.push({ platform: "facebook", success: false, error: "Meta not configured" });
+    }
+
+    // Post to Instagram (requires imageUrl)
+    if (targetPlatforms.includes("instagram") && metaService && imageUrl) {
+      const igResult = await metaService.postToInstagram(adaptedContent.instagram, imageUrl);
+      results.push(igResult);
+    } else if (targetPlatforms.includes("instagram") && !imageUrl) {
+      results.push({ platform: "instagram", success: false, error: "imageUrl required for Instagram" });
+    } else if (targetPlatforms.includes("instagram") && !metaService) {
+      results.push({ platform: "instagram", success: false, error: "Meta not configured" });
+    }
+
+    // Twitter is handled by the /post skill via MCP tools — return adapted text
+    if (targetPlatforms.includes("twitter")) {
+      results.push({ platform: "twitter", success: true, postId: "pending-mcp", error: "Post via MCP tool" });
+    }
+
+    return c.json({ adaptedContent, results });
+  });
+
   // ---- Push Notification Endpoints ----
 
   app.get("/api/push/vapid-key", (c) => {
@@ -1273,6 +1363,7 @@ async function main() {
       github: githubService ? "connected" : "not configured",
       vercel: vercelService ? "connected" : "not configured",
       supabase: supabaseAwarenessService ? "connected" : "not configured",
+      meta: metaService ? "connected" : "not configured",
       push: pushService ? "configured" : "not configured",
       gmail: gmailService ? "connected" : googleAuth ? "not authenticated" : "not configured",
       calendar: calendarService ? "connected" : googleAuth ? "not authenticated" : "not configured",

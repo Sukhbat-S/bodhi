@@ -7,6 +7,7 @@ export default defineConfig({
     "./src/schema/memories.ts",
     "./src/schema/push-subscriptions.ts",
     "./src/schema/briefings.ts",
+    "./src/schema/entities.ts",
   ],
   out: "./src/migrations",
   dialect: "postgresql",

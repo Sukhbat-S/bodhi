@@ -22,7 +22,7 @@ import { Agent, ContextEngine, type ConversationMessage } from "@seneca/core";
 import { Bridge } from "@seneca/bridge";
 import { getDb } from "@seneca/db";
 import { sql } from "drizzle-orm";
-import { MemoryService, MemoryExtractor, MemoryContextProvider, MemorySynthesizer, InsightGenerator } from "@seneca/memory";
+import { MemoryService, MemoryExtractor, MemoryContextProvider, MemorySynthesizer, InsightGenerator, EntityService, EntityBackfill, EntityContextProvider } from "@seneca/memory";
 import { TelegramBot } from "@seneca/channel-telegram";
 import { Scheduler } from "@seneca/scheduler";
 import { NotionService, NotionContextProvider } from "@seneca/notion";
@@ -89,11 +89,13 @@ async function main() {
 
   // 5. Initialize Memory System
   const memoryService = new MemoryService(db, config.VOYAGE_API_KEY);
-  const memoryExtractor = new MemoryExtractor(memoryService, bridge);
+  const entityService = new EntityService(db);
+  const entityBackfill = new EntityBackfill(db, bridge, entityService);
+  const memoryExtractor = new MemoryExtractor(memoryService, bridge, entityService);
   const memoryProvider = new MemoryContextProvider(memoryService);
   const memorySynthesizer = new MemorySynthesizer(memoryService, bridge);
   const insightGenerator = new InsightGenerator(memoryService);
-  console.log("  Memory: initialized (Voyage AI embeddings + synthesizer + insights)");
+  console.log("  Memory: initialized (Voyage AI embeddings + entities + synthesizer + insights)");
 
   // 6. Initialize Notion (optional — workspace context)
   let notionService: NotionService | null = null;
@@ -239,7 +241,9 @@ async function main() {
   if (supabaseAwarenessProvider) {
     contextEngine.register(supabaseAwarenessProvider);
   }
-  const providerCount = 2 + (notionProvider ? 1 : 0) + (gmailProvider ? 1 : 0) + (calendarProvider ? 1 : 0) + (githubProvider ? 1 : 0) + (vercelProvider ? 1 : 0) + (supabaseAwarenessProvider ? 1 : 0);
+  const entityProvider = new EntityContextProvider(entityService);
+  contextEngine.register(entityProvider);
+  const providerCount = 3 + (notionProvider ? 1 : 0) + (gmailProvider ? 1 : 0) + (calendarProvider ? 1 : 0) + (githubProvider ? 1 : 0) + (vercelProvider ? 1 : 0) + (supabaseAwarenessProvider ? 1 : 0);
   console.log(`  Context: initialized (${providerCount} provider${providerCount > 1 ? "s" : ""}, includes project knowledge)`);
 
   // 8. Initialize Agent Core (routes through Bridge, not Anthropic API)
@@ -294,6 +298,7 @@ async function main() {
     supabase: supabaseAwarenessService,
     pushSender: pushService,
     briefingStore,
+    entityService,
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings)");
 
@@ -563,6 +568,81 @@ async function main() {
         lastWeek: totalRate - recentRate,
       },
     });
+  });
+
+  // ---- Entity Graph API ----
+
+  app.get("/api/entities", async (c) => {
+    const type = c.req.query("type");
+    const search = c.req.query("search");
+    const limit = Number(c.req.query("limit")) || 20;
+    const offset = Number(c.req.query("offset")) || 0;
+    const result = await entityService.list({ type: type || undefined, search: search || undefined, limit, offset });
+    return c.json(result);
+  });
+
+  app.get("/api/entities/stats", async (c) => {
+    const stats = await entityService.getStats();
+    return c.json(stats);
+  });
+
+  app.get("/api/entities/graph", async (c) => {
+    const graph = await entityService.getGraph();
+    return c.json(graph);
+  });
+
+  app.get("/api/entities/:id", async (c) => {
+    const entity = await entityService.getEntity(c.req.param("id"));
+    if (!entity) return c.json({ error: "Entity not found" }, 404);
+    return c.json(entity);
+  });
+
+  app.get("/api/entities/:id/memories", async (c) => {
+    const limit = Number(c.req.query("limit")) || 20;
+    const memories = await entityService.getEntityMemories(c.req.param("id"), limit);
+    return c.json({ memories });
+  });
+
+  app.post("/api/entities", async (c) => {
+    const body = await c.req.json<{ name: string; type: string; description?: string; aliases?: string[] }>();
+    if (!body.name || !body.type) return c.json({ error: "name and type required" }, 400);
+    const entity = await entityService.findOrCreate(body.name, body.type as any, body.aliases);
+    if (body.description) {
+      await entityService.update(entity.id, { description: body.description });
+    }
+    return c.json(entity, 201);
+  });
+
+  app.patch("/api/entities/:id", async (c) => {
+    const body = await c.req.json<{ name?: string; description?: string; aliases?: string[]; type?: string }>();
+    const updated = await entityService.update(c.req.param("id"), body as any);
+    if (!updated) return c.json({ error: "Entity not found" }, 404);
+    return c.json(updated);
+  });
+
+  app.delete("/api/entities/:id", async (c) => {
+    await entityService.remove(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/entities/:id/merge", async (c) => {
+    const body = await c.req.json<{ mergeId: string }>();
+    if (!body.mergeId) return c.json({ error: "mergeId required" }, 400);
+    await entityService.merge(c.req.param("id"), body.mergeId);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/entities/backfill", async (c) => {
+    if (entityBackfill.isRunning()) {
+      return c.json({ error: "Backfill already running" }, 409);
+    }
+    // Run in background — don't block the request
+    entityBackfill.run().then((result) => {
+      console.log(`[entities] Backfill complete:`, result);
+    }).catch((err) => {
+      console.error("[entities] Backfill failed:", err instanceof Error ? err.message : err);
+    });
+    return c.json({ status: "started" });
   });
 
   // API: Streaming chat (SSE)

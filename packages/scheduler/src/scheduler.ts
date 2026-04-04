@@ -58,6 +58,11 @@ export interface BriefingStore {
   save(type: "morning" | "evening" | "weekly", content: string): Promise<void>;
 }
 
+interface EntityDataSource {
+  getRecentlyActive(days: number, limit: number): Promise<{ name: string; type: string; mentionCount: number }[]>;
+  getGraph(): Promise<{ nodes: { id: string; name: string; type: string; mentionCount: number }[]; edges: { sourceId: string; targetId: string; sharedMemoryCount: number }[] }>;
+}
+
 export interface SchedulerConfig {
   agent: Agent;
   telegram: TelegramSender;
@@ -74,6 +79,7 @@ export interface SchedulerConfig {
   insightGenerator?: InsightGenerator | null;
   pushSender?: PushSender | null;
   briefingStore?: BriefingStore | null;
+  entityService?: EntityDataSource | null;
 }
 
 interface JobRecord {
@@ -103,6 +109,7 @@ Rules:
 - Under 200 words
 - If Gmail or Calendar data is provided below, you MUST include it in your briefing
 - If GitHub, Vercel, or Supabase data is provided, mention notable activity (open PRs, failed deploys, health issues)
+- If Entity data is provided, mention who/what projects are most active today
 - If no calendar/email data is present, skip those sections silently
 - Use Markdown formatting`,
 
@@ -123,6 +130,7 @@ Rules:
 - No "great job" or cheerleading
 - Under 150 words
 - If Gmail or Calendar data is provided below, you MUST include it
+- If Entity data is provided, note which people and projects came up today
 - Use Markdown formatting`,
 
   weekly: `You are generating a weekly synthesis for Sukhbat.
@@ -134,13 +142,15 @@ Structure your response in this order:
 1. **Week in Review** — what he focused on, key events and meetings from the calendar.
 2. **Inbox Patterns** — any notable email threads or recurring senders worth flagging.
 3. **Patterns** — what's building across projects, decisions, energy. Incorporate brain insights if provided.
-4. **Attention** — anything that might need attention next week. Flag stalled decisions or neglected knowledge if listed in insights.
-5. **Question** — one question about direction.
+4. **Connections** — if entity graph data is provided, highlight relationship patterns: who is connected to which projects, recurring collaborators.
+5. **Attention** — anything that might need attention next week. Flag stalled decisions or neglected knowledge if listed in insights.
+6. **Question** — one question about direction.
 
 Rules:
 - Mirror mode: notice patterns, don't prescribe actions
 - Under 250 words
 - If Gmail or Calendar data is provided below, you MUST include it
+- If Entity data is provided, weave relationship patterns into your synthesis
 - Use Markdown formatting`,
 };
 
@@ -532,6 +542,38 @@ Triage these emails now.`;
         }
       }
 
+      // Entity graph context
+      let entitySection = "";
+      if (this.config.entityService) {
+        try {
+          const days = type === "weekly" ? 7 : 1;
+          const recentEntities = await this.config.entityService.getRecentlyActive(days, 10);
+          if (recentEntities.length > 0) {
+            entitySection = `\n\n## Active Entities (${type === "weekly" ? "this week" : "today"})\n\n`;
+            entitySection += recentEntities
+              .map((e) => `- ${e.type}: **${e.name}** (${e.mentionCount} mentions)`)
+              .join("\n");
+
+            // Add top co-occurrences for weekly briefing
+            if (type === "weekly") {
+              const graph = await this.config.entityService.getGraph();
+              const topEdges = graph.edges
+                .sort((a, b) => b.sharedMemoryCount - a.sharedMemoryCount)
+                .slice(0, 5);
+              if (topEdges.length > 0) {
+                const nodeMap = new Map(graph.nodes.map((n) => [n.id, n.name]));
+                entitySection += "\n\nTop connections:\n";
+                entitySection += topEdges
+                  .map((e) => `- ${nodeMap.get(e.sourceId) || "?"} + ${nodeMap.get(e.targetId) || "?"}: ${e.sharedMemoryCount} shared memories`)
+                  .join("\n");
+              }
+            }
+          }
+        } catch (err) {
+          console.error("[scheduler] Entity data fetch failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
       const prompt = `${PROMPTS[type]}
 
 ## Recent Memories (${recentMemories.length} items)
@@ -541,7 +583,7 @@ ${memoriesText}
 ## Stats
 - Total memories: ${stats.totalMemories}
 - New in last 24h: ${stats.recentCount}
-- Top tags: ${stats.topTags.map((t) => `${t.tag}(${t.count})`).join(", ") || "none"}${notionSection}${gmailSection}${calendarSection}${githubSection}${vercelSection}${supabaseSection}${insightsSection}
+- Top tags: ${stats.topTags.map((t) => `${t.tag}(${t.count})`).join(", ") || "none"}${notionSection}${gmailSection}${calendarSection}${githubSection}${vercelSection}${supabaseSection}${insightsSection}${entitySection}
 
 Generate the ${type} briefing now.`;
 

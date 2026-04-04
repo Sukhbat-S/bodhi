@@ -16,6 +16,7 @@ import EcosystemPage from "./pages/EcosystemPage";
 import BriefingsPage from "./pages/BriefingsPage";
 import SearchPage from "./pages/SearchPage";
 import TimelinePage from "./pages/TimelinePage";
+import EntityGraphPage from "./pages/EntityGraphPage";
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="/supabase" element={<SupabasePage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/timeline" element={<TimelinePage />} />
+          <Route path="/entities" element={<EntityGraphPage />} />
         </Routes>
       </main>
     </div>

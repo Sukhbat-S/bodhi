@@ -7,6 +7,7 @@
 import type { AIBackend } from "@seneca/core";
 import type { MemoryInput } from "./service.js";
 import { MemoryService } from "./service.js";
+import type { EntityService, EntityType } from "./entity-service.js";
 
 const SESSION_EXTRACTION_PROMPT = `You are a memory extraction system. Analyze this Telegram conversation session and extract the most important facts, decisions, patterns, and events worth remembering long-term.
 
@@ -16,16 +17,16 @@ Rules:
 - Each memory should be a single, clear, self-contained statement
 - Prioritize: decisions (high importance), patterns (medium-high), facts (medium), events (medium)
 - Aim for 3-8 high-quality memories from a full session — not every detail
-- If nothing meaningful was discussed, return an empty array
+- Also extract named entities: specific people, projects, organizations, topics, or places mentioned
+- Do NOT extract generic concepts ("AI", "code", "database") as entities — only specific named things
 
-Return a JSON array of objects with these fields:
-- content: string (the memory, written as a factual statement about Sukhbat)
-- type: "fact" | "decision" | "pattern" | "preference" | "event"
-- importance: number (0.1 to 1.0)
+Return a JSON object with:
+- memories: array of {content: string, type: "fact"|"decision"|"pattern"|"preference"|"event", importance: 0.1-1.0}
+- entities: array of {name: "canonical name", type: "person"|"project"|"topic"|"organization"|"place"}
 
-Example: [{"content": "Sukhbat decided to pause Blink Studio", "type": "decision", "importance": 0.9}]
+Example: {"memories": [{"content": "Sukhbat decided to pause Blink Studio", "type": "decision", "importance": 0.9}], "entities": [{"name": "Blink Studio", "type": "project"}]}
 
-If nothing worth remembering: []`;
+If nothing worth remembering: {"memories": [], "entities": []}`;
 
 const EXTRACTION_PROMPT = `You are a memory extraction system. Analyze this conversation exchange and extract key facts, decisions, preferences, patterns, or events worth remembering about the user.
 
@@ -37,20 +38,16 @@ Rules:
 - Capture preferences, habits, and patterns
 - Capture important dates, deadlines, and events
 - Capture emotional states or concerns only if significant
-- If nothing is worth remembering, return an empty array
+- Also extract named entities: specific people, projects, organizations, topics, or places mentioned
+- Do NOT extract generic concepts ("AI", "code", "database") as entities — only specific named things
 
-Return a JSON array of objects with these fields:
-- content: string (the memory, written as a factual statement)
-- type: "fact" | "decision" | "pattern" | "preference" | "event"
-- importance: number (0.1 to 1.0 — how important is this to remember?)
+Return a JSON object with:
+- memories: array of {content: string, type: "fact"|"decision"|"pattern"|"preference"|"event", importance: 0.1-1.0}
+- entities: array of {name: "canonical name", type: "person"|"project"|"topic"|"organization"|"place"}
 
-Example output:
-[
-  {"content": "Sukhbat decided to use Voyage AI for embeddings instead of OpenAI", "type": "decision", "importance": 0.7},
-  {"content": "The jewelry platform launch is targeted for March 24, 2026", "type": "event", "importance": 0.9}
-]
+Example: {"memories": [{"content": "Sukhbat decided to use Voyage AI for embeddings", "type": "decision", "importance": 0.7}], "entities": [{"name": "Voyage AI", "type": "organization"}]}
 
-If nothing worth remembering: []`;
+If nothing worth remembering: {"memories": [], "entities": []}`;
 
 const JOURNAL_EXTRACTION_PROMPT = `You are a personal journal memory extraction system. Analyze this voice journal entry and extract meaningful personal memories.
 
@@ -62,23 +59,25 @@ Rules:
 - Write each memory as a warm, personal statement (not clinical or technical)
 - Aim for 2-6 quality memories — don't force extraction from simple entries
 - If the entry is just a quick thought, extract 1-2 memories
+- Also extract named entities: specific people, projects, organizations, topics, or places mentioned
 
-Return a JSON array of objects with these fields:
-- content: string (the memory, written in third person about the user)
-- type: "fact" | "decision" | "pattern" | "preference" | "event"
-- importance: number (0.3 to 1.0 — personal insights and decisions are high, casual thoughts are lower)
+Return a JSON object with:
+- memories: array of {content: string, type: "fact"|"decision"|"pattern"|"preference"|"event", importance: 0.3-1.0}
+- entities: array of {name: "canonical name", type: "person"|"project"|"topic"|"organization"|"place"}
 
-Example: [{"content": "Sukhbat is feeling good about the progress on the jewelry platform launch", "type": "fact", "importance": 0.6}]
+Example: {"memories": [{"content": "Sukhbat is feeling good about the jewelry platform launch", "type": "fact", "importance": 0.6}], "entities": [{"name": "Jewelry Platform", "type": "project"}]}
 
-If nothing worth remembering: []`;
+If nothing worth remembering: {"memories": [], "entities": []}`;
 
 export class MemoryExtractor {
   private backend: AIBackend;
   private memoryService: MemoryService;
+  private entityService?: EntityService;
 
-  constructor(memoryService: MemoryService, backend: AIBackend) {
+  constructor(memoryService: MemoryService, backend: AIBackend, entityService?: EntityService) {
     this.backend = backend;
     this.memoryService = memoryService;
+    this.entityService = entityService;
   }
 
   async extract(
@@ -92,7 +91,7 @@ export class MemoryExtractor {
       const fullPrompt = `<system>
 ${EXTRACTION_PROMPT}
 
-IMPORTANT: Respond ONLY with the JSON array. Do NOT use any tools. Do NOT try to read, write, or edit any files. Just output the JSON array.
+IMPORTANT: Respond ONLY with the JSON object. Do NOT use any tools. Do NOT try to read, write, or edit any files. Just output the JSON.
 </system>
 
 User message: ${userMessage}
@@ -111,19 +110,12 @@ Assistant response: ${assistantResponse}`;
 
       const text = task.result || task.error || "";
 
-      // Parse the JSON array from the response
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) return;
+      // Parse response — supports both new {memories, entities} and legacy [memories] format
+      const { memories: extracted, entities: extractedEntities } = this.parseExtraction(text);
 
-      const extracted: Array<{
-        content: string;
-        type: MemoryInput["type"];
-        importance: number;
-      }> = JSON.parse(jsonMatch[0]);
+      if (extracted.length === 0) return;
 
-      if (!Array.isArray(extracted) || extracted.length === 0) return;
-
-      // Store each extracted memory and collect IDs for cross-referencing
+      // Store each extracted memory and collect IDs for entity linking
       const storedIds: string[] = [];
       for (const memory of extracted) {
         const id = await this.memoryService.store({
@@ -139,6 +131,11 @@ Assistant response: ${assistantResponse}`;
       console.log(
         `[memory] Extracted ${extracted.length} memories from conversation`
       );
+
+      // Link extracted entities to stored memories
+      this.linkEntities(extractedEntities, storedIds).catch((err) => {
+        console.error("[memory] Entity linking failed:", err instanceof Error ? err.message : err);
+      });
 
       // Cross-session reasoning: check if new memories connect to existing ones
       this.crossReference(extracted).catch((err) => {
@@ -174,7 +171,7 @@ Assistant response: ${assistantResponse}`;
       const fullPrompt = `<system>
 ${SESSION_EXTRACTION_PROMPT}
 
-IMPORTANT: Respond ONLY with the JSON array. Do NOT use any tools. Just output the JSON.
+IMPORTANT: Respond ONLY with the JSON object. Do NOT use any tools. Just output the JSON.
 </system>
 
 Telegram session transcript:
@@ -189,30 +186,25 @@ ${transcript.slice(0, 8000)}`; // Cap at 8k chars to avoid huge prompts
       });
 
       const text = task.result || task.error || "";
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) return;
+      const { memories: extracted, entities: extractedEntities } = this.parseExtraction(text);
 
-      const extracted: Array<{
-        content: string;
-        type: MemoryInput["type"];
-        importance: number;
-      }> = JSON.parse(jsonMatch[0]);
+      if (extracted.length === 0) return;
 
-      if (!Array.isArray(extracted) || extracted.length === 0) return;
-
+      const storedIds: string[] = [];
       for (const memory of extracted) {
-        await this.memoryService.store({
+        const id = await this.memoryService.store({
           content: memory.content,
           type: memory.type,
           source: "extraction",
           importance: memory.importance,
           tags: ["telegram-session", "auto-session-save"],
         });
+        storedIds.push(id);
       }
 
       console.log(`[memory] Session extraction: stored ${extracted.length} memories from thread`);
 
-      // Run cross-reference on session memories too
+      this.linkEntities(extractedEntities, storedIds).catch(() => {});
       this.crossReference(extracted).catch(() => {});
     } catch (error) {
       console.error(
@@ -233,7 +225,7 @@ ${transcript.slice(0, 8000)}`; // Cap at 8k chars to avoid huge prompts
       const fullPrompt = `<system>
 ${JOURNAL_EXTRACTION_PROMPT}
 
-IMPORTANT: Respond ONLY with the JSON array. Do NOT use any tools. Just output the JSON.
+IMPORTANT: Respond ONLY with the JSON object. Do NOT use any tools. Just output the JSON.
 </system>
 
 Voice journal entry:
@@ -248,29 +240,25 @@ ${transcript.slice(0, 6000)}`;
       });
 
       const text = task.result || task.error || "";
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) return 0;
+      const { memories: extracted, entities: extractedEntities } = this.parseExtraction(text);
 
-      const extracted: Array<{
-        content: string;
-        type: MemoryInput["type"];
-        importance: number;
-      }> = JSON.parse(jsonMatch[0]);
+      if (extracted.length === 0) return 0;
 
-      if (!Array.isArray(extracted) || extracted.length === 0) return 0;
-
+      const storedIds: string[] = [];
       for (const memory of extracted) {
-        await this.memoryService.store({
+        const id = await this.memoryService.store({
           content: memory.content,
           type: memory.type,
           source: "manual",
           importance: memory.importance,
           tags: ["journal", "voice-journal"],
         });
+        storedIds.push(id);
       }
 
       console.log(`[memory] Journal extraction: stored ${extracted.length} memories`);
 
+      this.linkEntities(extractedEntities, storedIds).catch(() => {});
       this.crossReference(extracted).catch(() => {});
       return extracted.length;
     } catch (error) {
@@ -280,6 +268,80 @@ ${transcript.slice(0, 6000)}`;
       );
       return 0;
     }
+  }
+
+  /**
+   * Parse extraction response — handles both new {memories, entities} format
+   * and legacy [memories] array format for backward compatibility.
+   */
+  private parseExtraction(text: string): {
+    memories: Array<{ content: string; type: MemoryInput["type"]; importance: number }>;
+    entities: Array<{ name: string; type: string }>;
+  } {
+    // Try object format first: {"memories": [...], "entities": [...]}
+    const objMatch = text.match(/\{[\s\S]*\}/);
+    if (objMatch) {
+      try {
+        const parsed = JSON.parse(objMatch[0]);
+        if (parsed.memories && Array.isArray(parsed.memories)) {
+          return {
+            memories: parsed.memories,
+            entities: Array.isArray(parsed.entities) ? parsed.entities : [],
+          };
+        }
+      } catch {
+        // Fall through to array format
+      }
+    }
+
+    // Legacy array format: [{"content": ..., "type": ..., "importance": ...}]
+    const arrMatch = text.match(/\[[\s\S]*\]/);
+    if (arrMatch) {
+      try {
+        const parsed = JSON.parse(arrMatch[0]);
+        if (Array.isArray(parsed)) {
+          return { memories: parsed, entities: [] };
+        }
+      } catch {
+        // Parse failed
+      }
+    }
+
+    return { memories: [], entities: [] };
+  }
+
+  /**
+   * Link extracted entities to stored memory IDs.
+   * Non-fatal — entity linking failure should never break memory extraction.
+   */
+  private async linkEntities(
+    extractedEntities: Array<{ name: string; type: string }>,
+    storedMemoryIds: string[]
+  ): Promise<void> {
+    if (!this.entityService || extractedEntities.length === 0 || storedMemoryIds.length === 0) return;
+
+    for (const ent of extractedEntities) {
+      if (!ent.name || !ent.type) continue;
+
+      try {
+        const entity = await this.entityService.findOrCreate(
+          ent.name,
+          ent.type as EntityType
+        );
+
+        // Link entity to all memories in this extraction batch
+        for (const memoryId of storedMemoryIds) {
+          await this.entityService.linkToMemory(entity.id, memoryId);
+        }
+      } catch (err) {
+        console.error(
+          `[memory] Failed to link entity "${ent.name}":`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
+    console.log(`[memory] Linked ${extractedEntities.length} entities to ${storedMemoryIds.length} memories`);
   }
 
   /**

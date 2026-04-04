@@ -974,6 +974,7 @@ async function main() {
       calendar: calendarService ? "connected" : googleAuth ? "not authenticated" : "not configured",
       scheduler: scheduler.getStatus().running ? "running" : "stopped",
       uptime: process.uptime(),
+      ownerName: config.BODHI_OWNER_NAME,
       channels: {
         telegram: "connected",
         web: "available",

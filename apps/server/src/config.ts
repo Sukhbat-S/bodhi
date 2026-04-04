@@ -70,6 +70,7 @@ const envSchema = z.object({
   TIMEZONE: z.string().default("Asia/Ulaanbaatar"),
   BODHI_PROJECT_DIR: z.string().optional(),
   CORS_ORIGINS: z.string().optional(),
+  BODHI_OWNER_NAME: z.string().default("User"),
 });
 
 export type Config = z.infer<typeof envSchema>;

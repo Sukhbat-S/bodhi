@@ -1,24 +1,79 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import NotificationToggle from "./NotificationToggle";
 
-const links = [
-  { to: "/", label: "Status", icon: "pulse" },
-  { to: "/briefings", label: "Briefings", icon: "briefings" },
-  { to: "/search", label: "Search", icon: "search" },
-  { to: "/ecosystem", label: "Ecosystem", icon: "ecosystem" },
-  { to: "/memories", label: "Memories", icon: "brain" },
-  { to: "/quality", label: "Quality", icon: "quality" },
-  { to: "/notion", label: "Notion", icon: "notion" },
-  { to: "/inbox", label: "Inbox", icon: "inbox" },
-  { to: "/calendar", label: "Calendar", icon: "calendar" },
-  { to: "/github", label: "GitHub", icon: "github" },
-  { to: "/vercel", label: "Vercel", icon: "vercel" },
-  { to: "/supabase", label: "Supabase", icon: "supabase" },
-  { to: "/chat", label: "Chat", icon: "chat" },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: string;
+  end?: boolean;
+}
+
+interface NavGroup {
+  label: string;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    label: "Core",
+    items: [
+      { to: "/", label: "Reflection", icon: "reflection", end: true },
+      { to: "/chat", label: "Chat", icon: "chat" },
+      { to: "/search", label: "Search", icon: "search" },
+    ],
+  },
+  {
+    label: "Knowledge",
+    items: [
+      { to: "/memories", label: "Memories", icon: "brain" },
+      { to: "/briefings", label: "Briefings", icon: "briefings" },
+      { to: "/timeline", label: "Timeline", icon: "timeline" },
+    ],
+  },
+  {
+    label: "Awareness",
+    collapsible: true,
+    defaultCollapsed: true,
+    items: [
+      { to: "/calendar", label: "Calendar", icon: "calendar" },
+      { to: "/inbox", label: "Inbox", icon: "inbox" },
+      { to: "/github", label: "GitHub", icon: "github" },
+      { to: "/vercel", label: "Vercel", icon: "vercel" },
+      { to: "/supabase", label: "Supabase", icon: "supabase" },
+    ],
+  },
+  {
+    label: "System",
+    collapsible: true,
+    defaultCollapsed: true,
+    items: [
+      { to: "/status", label: "Status", icon: "pulse" },
+      { to: "/quality", label: "Quality", icon: "quality" },
+      { to: "/ecosystem", label: "Ecosystem", icon: "ecosystem" },
+      { to: "/notion", label: "Notion", icon: "notion" },
+    ],
+  },
 ];
 
 const icons: Record<string, ReactNode> = {
+  reflection: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3c-4.97 0-9 3.582-9 8 0 2.2 1.1 4.2 2.85 5.6L5 21l4.35-2.15C10.22 19 11.1 19 12 19c4.97 0 9-3.582 9-8s-4.03-8-9-8z" />
+      <circle cx="12" cy="11" r="1" fill="currentColor" />
+    </svg>
+  ),
+  timeline: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m0-16l-3 3m3-3l3 3" />
+      <circle cx="12" cy="8" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="13" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="18" r="1.5" fill="currentColor" stroke="none" />
+      <path strokeLinecap="round" strokeWidth={1.5} d="M14 8h4M6 13h4M14 18h4" />
+    </svg>
+  ),
   pulse: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -89,7 +144,97 @@ const icons: Record<string, ReactNode> = {
       <path strokeLinecap="round" strokeWidth={1.5} d="M6.5 7.5L10 10.5M13.5 10.5L17.5 7.5M6.5 16.5L10 13.5M13.5 13.5L17.5 16.5" />
     </svg>
   ),
+  chevron: (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+    </svg>
+  ),
 };
+
+// Bodhi leaf logo SVG
+function BodhiLogo() {
+  return (
+    <svg className="w-7 h-7" viewBox="0 0 100 140" fill="none" stroke="#d97706" strokeWidth="3">
+      {/* Leaf */}
+      <path d="M50 15 C25 35, 15 60, 50 95 C85 60, 75 35, 50 15Z" strokeLinejoin="round" />
+      <path d="M50 30 L50 85" strokeLinecap="round" />
+      <path d="M50 50 C40 45, 30 50, 25 55" strokeLinecap="round" />
+      <path d="M50 65 C60 60, 70 65, 75 70" strokeLinecap="round" />
+      {/* Geometric roots */}
+      <circle cx="50" cy="100" r="3" fill="#d97706" />
+      <circle cx="35" cy="115" r="2.5" fill="#d97706" />
+      <circle cx="65" cy="115" r="2.5" fill="#d97706" />
+      <circle cx="25" cy="128" r="2" fill="#d97706" />
+      <circle cx="50" cy="125" r="2" fill="#d97706" />
+      <circle cx="75" cy="128" r="2" fill="#d97706" />
+      <line x1="50" y1="100" x2="35" y2="115" />
+      <line x1="50" y1="100" x2="65" y2="115" />
+      <line x1="35" y1="115" x2="25" y2="128" />
+      <line x1="35" y1="115" x2="50" y2="125" />
+      <line x1="65" y1="115" x2="50" y2="125" />
+      <line x1="65" y1="115" x2="75" y2="128" />
+    </svg>
+  );
+}
+
+function CollapsibleGroup({
+  group,
+  onClose,
+}: {
+  group: NavGroup;
+  onClose: () => void;
+}) {
+  const storageKey = `sidebar-${group.label}`;
+  const [collapsed, setCollapsed] = useState(() => {
+    const stored = localStorage.getItem(storageKey);
+    return stored !== null ? stored === "true" : (group.defaultCollapsed ?? false);
+  });
+
+  useEffect(() => {
+    localStorage.setItem(storageKey, String(collapsed));
+  }, [collapsed, storageKey]);
+
+  return (
+    <div>
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="flex items-center justify-between w-full px-3 py-1.5 text-xs uppercase tracking-wider text-stone-500 hover:text-stone-400 transition-colors"
+      >
+        {group.label}
+        <span className={`transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}>
+          {icons.chevron}
+        </span>
+      </button>
+      {!collapsed && (
+        <div className="space-y-0.5 mt-0.5">
+          {group.items.map((item) => (
+            <NavItem key={item.to} item={item} onClose={onClose} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NavItem({ item, onClose }: { item: NavItem; onClose: () => void }) {
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      onClick={onClose}
+      className={({ isActive }) =>
+        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          isActive
+            ? "bg-amber-500/10 text-amber-400 border-l-2 border-amber-500 -ml-[2px]"
+            : "text-stone-400 hover:text-stone-200 hover:bg-stone-800/50"
+        }`
+      }
+    >
+      {icons[item.icon]}
+      {item.label}
+    </NavLink>
+  );
+}
 
 interface SidebarProps {
   isOpen: boolean;
@@ -109,44 +254,43 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Sidebar panel */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-56 bg-stone-900 border-r border-stone-800 flex flex-col transform transition-transform duration-200 ease-out md:relative md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-56 bg-stone-950 border-r border-stone-800/60 flex flex-col transform transition-transform duration-200 ease-out md:relative md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Logo */}
-        <div className="p-5 border-b border-stone-800">
-          <h1 className="text-lg font-bold text-stone-100 tracking-wide flex items-center gap-2">
-            <span className="text-xl">🌳</span> BODHI
+        <div className="p-5 border-b border-stone-800/60">
+          <h1 className="text-lg font-bold text-stone-100 tracking-wide flex items-center gap-2.5">
+            <BodhiLogo />
+            BODHI
           </h1>
-          <p className="text-xs text-stone-500 mt-1">Dashboard</p>
+          <p className="text-xs text-stone-500 mt-1">See yourself clearly.</p>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {links.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.to === "/"}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-stone-800 text-stone-100"
-                    : "text-stone-400 hover:text-stone-200 hover:bg-stone-800/50"
-                }`
-              }
-            >
-              {icons[link.icon]}
-              {link.label}
-            </NavLink>
-          ))}
+        <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
+          {navGroups.map((group) =>
+            group.collapsible ? (
+              <CollapsibleGroup key={group.label} group={group} onClose={onClose} />
+            ) : (
+              <div key={group.label}>
+                <p className="px-3 py-1.5 text-xs uppercase tracking-wider text-stone-500">
+                  {group.label}
+                </p>
+                <div className="space-y-0.5 mt-0.5">
+                  {group.items.map((item) => (
+                    <NavItem key={item.to} item={item} onClose={onClose} />
+                  ))}
+                </div>
+              </div>
+            )
+          )}
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-stone-800 space-y-2">
+        <div className="p-4 border-t border-stone-800/60 space-y-2">
           <NotificationToggle />
-          <p className="text-xs text-stone-600">v0.8.0 &middot; PWA</p>
+          <p className="text-xs text-stone-600">v0.9.0</p>
         </div>
       </aside>
     </>

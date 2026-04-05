@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { getStatus, type StatusResponse } from "../api";
 
 // --- Fade-in on scroll ---
 function FadeIn({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -73,11 +74,17 @@ const icons = {
 
 export default function AboutPage() {
   const [scrolled, setScrolled] = useState(false);
+  const [live, setLive] = useState<StatusResponse | null>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Fetch live status
+  useEffect(() => {
+    getStatus().then(setLive).catch(() => {});
   }, []);
 
   return (
@@ -238,23 +245,57 @@ export default function AboutPage() {
         </section>
       </FadeIn>
 
-      {/* Stats */}
+      {/* Live Status + Stats */}
       <FadeIn>
         <section className="py-16 px-6">
           <div className="max-w-4xl mx-auto">
+            {/* Live pulse */}
+            {live && (
+              <div className="flex items-center justify-center gap-2 mb-8">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                </span>
+                <span className="text-xs text-emerald-400 font-medium">
+                  BODHI is online — uptime {Math.floor((live.uptime || 0) / 3600)}h {Math.floor(((live.uptime || 0) % 3600) / 60)}m
+                </span>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-              {[
-                { value: 14, suffix: "+", label: "Packages" },
-                { value: 1600, suffix: "+", label: "Memories" },
-                { value: 9, suffix: "", label: "Integrations" },
-                { value: 16, suffix: "", label: "Phases Shipped" },
-              ].map(s => (
+              {(() => {
+                const integrationCount = live
+                  ? [live.gmail, live.calendar, live.github, live.vercel, live.supabase, live.notion]
+                      .filter(v => v && v !== "not configured").length
+                  : 9;
+                return [
+                  { value: 14, suffix: "+", label: "Packages" },
+                  { value: 1600, suffix: "+", label: "Memories" },
+                  { value: integrationCount, suffix: "", label: "Integrations Live" },
+                  { value: 16, suffix: "", label: "Phases Shipped" },
+                ];
+              })().map(s => (
                 <div key={s.label}>
                   <div className="text-3xl md:text-4xl font-bold text-white"><Counter target={s.value} suffix={s.suffix} /></div>
                   <div className="text-sm text-stone-500 mt-1">{s.label}</div>
                 </div>
               ))}
             </div>
+
+            {/* Service status grid */}
+            {live && (
+              <div className="mt-8 flex flex-wrap justify-center gap-2">
+                {Object.entries(live)
+                  .filter(([k, v]) => typeof v === "string" && k !== "ownerName" && k !== "bridge")
+                  .map(([key, value]) => {
+                    const isUp = value === "online" || value === "active" || value === "connected" || value === "running" || value === "available";
+                    return (
+                      <span key={key} className={`text-[11px] px-3 py-1 rounded-full border ${isUp ? "border-emerald-500/20 text-emerald-400 bg-emerald-500/5" : "border-stone-700 text-stone-500"}`}>
+                        {key}
+                      </span>
+                    );
+                  })}
+              </div>
+            )}
           </div>
         </section>
       </FadeIn>

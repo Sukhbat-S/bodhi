@@ -6,7 +6,8 @@ dist
 .git
 .DS_Store
 .google-token.json
+.youtube-token.json
 *.log
 .claude
-scripts
+branding
 apps/dashboard/dist

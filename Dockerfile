@@ -23,6 +23,7 @@ COPY packages/mcp-server/package.json packages/mcp-server/
 COPY packages/github/package.json packages/github/
 COPY packages/vercel/package.json packages/vercel/
 COPY packages/supabase-awareness/package.json packages/supabase-awareness/
+COPY packages/social/package.json packages/social/
 COPY packages/channels/telegram/package.json packages/channels/telegram/
 COPY apps/server/package.json apps/server/
 COPY apps/dashboard/package.json apps/dashboard/

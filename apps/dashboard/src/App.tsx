@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
+import CommandPalette from "./components/CommandPalette";
 import AboutPage from "./pages/AboutPage";
 import ReflectionPage from "./pages/ReflectionPage";
 import StatusPage from "./pages/StatusPage";
@@ -31,6 +32,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen overflow-hidden">
+      <CommandPalette />
       {/* Mobile header */}
       <header className="fixed top-0 left-0 right-0 z-40 flex items-center h-14 px-4 bg-stone-950 border-b border-stone-800/60 md:hidden">
         <button

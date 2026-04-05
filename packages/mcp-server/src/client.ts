@@ -535,6 +535,56 @@ export async function extractMemories(
 }
 
 // --------------------------------------------------
+// Content Generation
+// --------------------------------------------------
+
+export async function generateBuildLog(
+  days = 7,
+  topic = "",
+): Promise<string> {
+  const result = await bodhiFetch<{
+    buildlog: { tweets: string[]; summary: string };
+    rawData: { commits: number; memories: number };
+  }>("/api/content/buildlog", {
+    method: "POST",
+    body: JSON.stringify({ days, topic }),
+  });
+
+  if (!result.ok) return result.error;
+
+  const { buildlog, rawData } = result.data;
+  const tweets = buildlog.tweets.map((t, i) => `[Tweet ${i + 1}] ${t}`).join("\n\n");
+  return [
+    `Build Log (${rawData.commits} commits, ${rawData.memories} memories):`,
+    "",
+    tweets,
+    "",
+    `Summary: ${buildlog.summary}`,
+  ].join("\n");
+}
+
+export async function generateWeeklyDigest(): Promise<string> {
+  const result = await bodhiFetch<{
+    digest: string;
+    stats: { commits: number; memories: number };
+    tweets: string[];
+  }>("/api/content/weekly-digest", {
+    method: "POST",
+  });
+
+  if (!result.ok) return result.error;
+
+  const { digest, stats, tweets } = result.data;
+  return [
+    `Weekly Digest (${stats.commits} commits, ${stats.memories} memories):`,
+    "",
+    digest,
+    "",
+    tweets.length > 0 ? `Tweet-ready:\n${tweets.map((t, i) => `[${i + 1}] ${t}`).join("\n")}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+// --------------------------------------------------
 // Helpers
 // --------------------------------------------------
 

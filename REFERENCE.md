@@ -24,6 +24,41 @@ PORT=4000
 
 `ANTHROPIC_API_KEY` is optional (not used — Bridge handles AI).
 
+See `.env.example` for all 30+ environment variables with documentation.
+
+## Scheduler Jobs
+
+| Job | Schedule | Purpose |
+|-----|----------|---------|
+| `morning` | 08:00 daily | Morning briefing via Telegram |
+| `evening` | 18:00 daily | Evening reflection via Telegram |
+| `weekly` | Sunday 20:00 | Weekly synthesis via Telegram |
+| `inbox-triage` | 09:00 daily | Email triage (requires Gmail) |
+| `synthesis` | 03:00 daily | Memory dedup, connect, decay, promote |
+| `build-digest` | Monday 10:00 | Auto-generate build-in-public content (requires GitHub) |
+
+## Dashboard Routes
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/` | Reflection | Homepage with greeting, insights, quick actions |
+| `/about` | Landing | Public page (no sidebar) — shareable on X/HN |
+| `/chat` | Chat | Streaming chat with conversation history |
+| `/search` | Search | Semantic memory search with type filters |
+| `/memories` | Memories | Paginated memory list with tags |
+| `/entities` | Entity Graph | Interactive entity relationship visualization |
+| `/briefings` | Briefings | Morning/evening/weekly briefing history |
+| `/timeline` | Timeline | Chronological memory visualization |
+| `/inbox` | Inbox | Gmail integration |
+| `/calendar` | Calendar | Google Calendar integration |
+| `/github` | GitHub | Commits, PRs, issues + build log generation |
+| `/vercel` | Vercel | Deployment tracking |
+| `/supabase` | Supabase | Project health monitoring |
+| `/notion` | Notion | Tasks and sessions |
+| `/ecosystem` | Ecosystem | Interactive project graph |
+| `/quality` | Quality | Memory quality management |
+| `/status` | Status | System health monitoring |
+
 ## API Endpoints (Hono on :4000)
 
 | Route | Method | Purpose |
@@ -65,6 +100,33 @@ PORT=4000
 | `/api/vercel/deployments` | GET | Recent deployments |
 | `/api/supabase/status` | GET | Supabase connection status |
 | `/api/supabase/health` | GET | Project health + table stats |
+| `/api/entities` | GET | List entities (people, projects, orgs) |
+| `/api/entities` | POST | Create entity |
+| `/api/entities/:id` | PATCH | Update entity |
+| `/api/entities/:id` | DELETE | Delete entity |
+| `/api/entities/stats` | GET | Entity counts by type |
+| `/api/entities/graph` | GET | Entity co-occurrence graph |
+| `/api/entities/merge` | POST | Merge duplicate entities |
+| `/api/entities/backfill` | POST | Extract entities from existing memories |
+| `/api/social/status` | GET | Meta/Facebook connection status |
+| `/api/post` | POST | Cross-platform posting (X + FB + IG) |
+| `/api/content/buildlog` | POST | Generate build-in-public post from git + memory |
+| `/api/content/weekly-digest` | POST | Generate weekly work digest |
+| `/api/gmail/drafts` | POST | Create Gmail draft |
+| `/api/gmail/labels` | GET | List Gmail labels |
+| `/api/gmail/labels` | POST | Create Gmail label |
+| `/api/gmail/filters` | POST | Create Gmail filter |
+| `/api/gmail/batch/read` | POST | Batch mark emails as read |
+| `/api/gmail/batch/archive` | POST | Batch archive emails |
+| `/api/calendar/events` | POST | Create calendar event |
+| `/api/calendar/events/:id` | PATCH | Update calendar event |
+| `/api/calendar/events/:id` | DELETE | Delete calendar event |
+| `/api/push/vapid-key` | GET | Get VAPID public key |
+| `/api/push/subscribe` | POST | Subscribe to push notifications |
+| `/api/push/status` | GET | Push notification status |
+| `/api/webhooks/github` | POST | GitHub webhook receiver |
+| `/api/webhooks/vercel` | POST | Vercel webhook receiver |
+| `/api/webhooks/supabase` | POST | Supabase webhook receiver |
 
 ## Deployment (Docker / VPS)
 

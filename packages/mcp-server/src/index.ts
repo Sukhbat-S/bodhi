@@ -26,6 +26,8 @@ import {
   runMemorySynthesis,
   getInsights,
   extractMemories,
+  generateBuildLog,
+  generateWeeklyDigest,
 } from "./client.js";
 
 // Create MCP server
@@ -260,6 +262,35 @@ server.tool(
   },
   async ({ user_message, assistant_response }) => {
     const result = await extractMemories(user_message, assistant_response);
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: generate_build_log
+// --------------------------------------------------
+server.tool(
+  "generate_build_log",
+  "Generate a build-in-public post from recent git commits and session memories. Returns tweet-ready content for X/Twitter. Use this to create content about what was built recently.",
+  {
+    days: z.number().optional().default(7).describe("Number of days to look back (default: 7)"),
+    topic: z.string().optional().default("").describe("Optional topic focus (e.g., 'dashboard improvements')"),
+  },
+  async ({ days, topic }) => {
+    const result = await generateBuildLog(days, topic);
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: generate_weekly_digest
+// --------------------------------------------------
+server.tool(
+  "generate_weekly_digest",
+  "Generate a weekly work digest summarizing commits, memories, and progress. Returns a digest paragraph and tweet-ready summaries.",
+  {},
+  async () => {
+    const result = await generateWeeklyDigest();
     return { content: [{ type: "text" as const, text: result }] };
   },
 );

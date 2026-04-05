@@ -2,9 +2,23 @@ node_modules/
 dist/
 .turbo/
 .env
-.env.local
+.env.*
+!.env.example
 *.log
 .DS_Store
+
+# OAuth tokens
 .google-token.json
+.youtube-token.json
+
+# Credentials
+*.pem
+*.key
+secrets.json
+
+# Local assets
+branding/
 .tmp/
 logs/
+.vercel/
+.cache/

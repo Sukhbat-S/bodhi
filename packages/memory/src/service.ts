@@ -162,6 +162,7 @@ export class MemoryService {
     offset?: number;
     tag?: string;
     search?: string;
+    type?: string;
   } = {}): Promise<{ memories: MemoryResult[]; total: number }> {
     const limit = opts.limit ?? 20;
     const offset = opts.offset ?? 0;
@@ -173,6 +174,9 @@ export class MemoryService {
     }
     if (opts.search) {
       conditions.push(sql`content ILIKE ${"%" + opts.search + "%"}`);
+    }
+    if (opts.type) {
+      conditions.push(sql`type = ${opts.type}`);
     }
 
     const whereClause =

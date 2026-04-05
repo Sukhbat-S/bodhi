@@ -475,8 +475,9 @@ async function main() {
     const offset = parseInt(c.req.query("offset") || "0");
     const tag = c.req.query("tag") || undefined;
     const search = c.req.query("search") || undefined;
+    const type = c.req.query("type") || undefined;
 
-    const result = await memoryService.listFiltered({ limit, offset, tag, search });
+    const result = await memoryService.listFiltered({ limit, offset, tag, search, type });
     return c.json(result);
   });
 

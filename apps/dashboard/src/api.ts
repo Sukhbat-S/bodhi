@@ -70,12 +70,14 @@ export function getMemories(params?: {
   offset?: number;
   tag?: string;
   search?: string;
+  type?: string;
 }) {
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.offset) qs.set("offset", String(params.offset));
   if (params?.tag) qs.set("tag", params.tag);
   if (params?.search) qs.set("search", params.search);
+  if (params?.type) qs.set("type", params.type);
   const query = qs.toString();
   return request<MemoriesResponse>(`/memories${query ? `?${query}` : ""}`);
 }

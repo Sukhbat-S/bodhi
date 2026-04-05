@@ -5,6 +5,7 @@ import {
   getMemoryStats,
   getMemoryInsights,
   getMemoryQuality,
+  getMemories,
   searchMemories,
   getCalendarToday,
   createMemory,
@@ -95,6 +96,7 @@ export default function ReflectionPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [ownerName, setOwnerName] = useState("User");
   const [latestBriefing, setLatestBriefing] = useState<Briefing | null>(null);
+  const [goals, setGoals] = useState<Memory[]>([]);
   const [quickInput, setQuickInput] = useState("");
   const [quickMode, setQuickMode] = useState<"chat" | "remember">("chat");
   const [remembered, setRemembered] = useState(false);
@@ -107,6 +109,7 @@ export default function ReflectionPage() {
       getMemoryInsights().then((r) => setInsights(r.insights)),
       getMemoryQuality().then(setQuality),
       searchMemories("decision", 5).then((r) => setDecisions(r.memories)),
+      getMemories({ type: "goal", limit: 10 }).then((r) => setGoals(r.memories)).catch(() => {}),
       getCalendarToday().then((r) => setEvents(r.events)).catch(() => {}),
       getBriefings({ limit: 1 }).then((r) => setLatestBriefing(r.briefings[0] || null)).catch(() => {}),
     ]).finally(() => setLoading(false));
@@ -239,6 +242,24 @@ export default function ReflectionPage() {
           )}
         </div>
       </div>
+
+      {/* Active Goals */}
+      {goals.length > 0 && (
+        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+          <h2 className="text-xs uppercase tracking-wider text-cyan-400 mb-4">Your Goals</h2>
+          <div className="space-y-3">
+            {goals.map((g) => (
+              <div key={g.id} className="flex items-start gap-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-2 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm text-stone-300 leading-relaxed">{g.content}</p>
+                  <p className="text-[11px] text-stone-600 mt-1">{formatAge(g.createdAt)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Today's Calendar */}
       {events.length > 0 && (

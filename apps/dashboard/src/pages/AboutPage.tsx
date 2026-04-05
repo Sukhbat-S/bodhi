@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { getStatus, type StatusResponse } from "../api";
+import { getStatus, searchMemories, type StatusResponse, type Memory } from "../api";
 
 // --- Fade-in on scroll ---
 function FadeIn({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -71,6 +71,110 @@ const icons = {
   channel: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>,
   build: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
 };
+
+// --- Live search demo for the landing page ---
+const DEMO_QUERIES = ["architecture decisions", "deployment patterns", "memory system", "content engine", "entity graph"];
+
+const TYPE_COLORS: Record<string, string> = {
+  fact: "text-blue-400",
+  decision: "text-emerald-400",
+  pattern: "text-violet-400",
+  preference: "text-amber-400",
+  event: "text-rose-400",
+};
+
+function LiveSearchDemo() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Memory[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const doSearch = async (q: string) => {
+    if (q.trim().length < 2) { setResults([]); setSearched(false); return; }
+    setLoading(true);
+    setSearched(true);
+    try {
+      const data = await searchMemories(q, 5);
+      setResults(data.memories);
+    } catch {
+      setResults([]);
+    }
+    setLoading(false);
+  };
+
+  const handleChange = (val: string) => {
+    setQuery(val);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => doSearch(val), 400);
+  };
+
+  return (
+    <div>
+      {/* Search input */}
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => handleChange(e.target.value)}
+          placeholder="Search BODHI's memory..."
+          className="w-full bg-stone-900 text-stone-100 px-5 py-4 rounded-xl border border-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/40 placeholder-stone-500 text-sm"
+        />
+        {loading && (
+          <div className="absolute right-4 top-1/2 -translate-y-1/2">
+            <div className="w-4 h-4 border-2 border-stone-600 border-t-amber-400 rounded-full animate-spin" />
+          </div>
+        )}
+      </div>
+
+      {/* Example queries */}
+      {!searched && (
+        <div className="flex flex-wrap justify-center gap-2 mt-4">
+          {DEMO_QUERIES.map((q) => (
+            <button
+              key={q}
+              onClick={() => { setQuery(q); doSearch(q); }}
+              className="text-xs px-3 py-1.5 rounded-full bg-stone-800/60 text-stone-400 hover:text-stone-200 hover:bg-stone-700 transition-colors"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Results */}
+      {searched && (
+        <div className="mt-4 space-y-2">
+          {results.length === 0 && !loading ? (
+            <p className="text-sm text-stone-500 text-center py-4">No results found</p>
+          ) : (
+            results.map((m) => {
+              const pct = m.similarity ? Math.round(m.similarity * 100) : 0;
+              return (
+                <div key={m.id} className="bg-stone-900/80 border border-stone-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`text-[11px] font-medium ${TYPE_COLORS[m.type] || "text-stone-400"}`}>
+                      {m.type}
+                    </span>
+                    {pct > 0 && (
+                      <span className="text-[10px] text-stone-600">{pct}% match</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-stone-300 leading-relaxed line-clamp-2">{m.content}</p>
+                </div>
+              );
+            })
+          )}
+          {results.length > 0 && (
+            <p className="text-[11px] text-stone-600 text-center mt-2">
+              Showing {results.length} of 1,600+ memories — semantic similarity via Voyage AI + pgvector
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AboutPage() {
   const [scrolled, setScrolled] = useState(false);
@@ -153,6 +257,19 @@ export default function AboutPage() {
             <p className="text-lg text-stone-300 leading-relaxed">
               Unlike stateless AI assistants, BODHI accumulates knowledge over time. Morning briefings pull from memory. Conversations reference past decisions. The entity graph tracks relationships between people, projects, and ideas. It gets smarter the more you use it.
             </p>
+          </div>
+        </section>
+      </FadeIn>
+
+      {/* Live Demo — Interactive Memory Search */}
+      <FadeIn>
+        <section className="py-16 px-6">
+          <div className="max-w-3xl mx-auto">
+            <h2 className="text-xs uppercase tracking-wider text-amber-500 mb-4 text-center">Try It — Live Memory Search</h2>
+            <p className="text-sm text-stone-500 text-center mb-6">
+              This searches BODHI's actual memory — {live ? `${Math.floor(live.uptime || 0) > 0 ? "live right now" : ""}` : ""} with 1,600+ stored memories.
+            </p>
+            <LiveSearchDemo />
           </div>
         </section>
       </FadeIn>

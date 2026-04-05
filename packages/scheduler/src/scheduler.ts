@@ -12,7 +12,7 @@ import type { MemorySynthesizer } from "@seneca/memory";
 import type { InsightGenerator, Insight } from "@seneca/memory";
 
 export type BriefingType = "morning" | "evening" | "weekly";
-export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage";
+export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest";
 
 interface TelegramSender {
   sendProactiveMessage(text: string): Promise<void>;
@@ -191,7 +191,7 @@ export class Scheduler {
     this.config = config;
 
     // Initialize job records
-    for (const type of ["morning", "evening", "weekly", "synthesis", "inbox-triage"] as SchedulerJobType[]) {
+    for (const type of ["morning", "evening", "weekly", "synthesis", "inbox-triage", "build-digest"] as SchedulerJobType[]) {
       this.jobs.set(type, {
         type,
         lastRun: null,
@@ -251,6 +251,16 @@ export class Scheduler {
     } else {
       console.log("[scheduler] Started — morning 08:00, evening 18:00, weekly Sun 20:00 UB");
     }
+
+    // Build digest: Monday 10:00 — auto-generate build-in-public content
+    if (this.config.github) {
+      this.tasks.push(
+        cron.schedule("0 10 * * 1", () => this.runBuildDigest(), {
+          timezone: tz,
+        })
+      );
+      console.log("[scheduler] Build digest: Mon 10:00 UB");
+    }
   }
 
   /**
@@ -274,6 +284,9 @@ export class Scheduler {
     }
     if (type === "inbox-triage") {
       return this.runInboxTriage();
+    }
+    if (type === "build-digest") {
+      return this.runBuildDigest();
     }
     return this.runBriefing(type);
   }
@@ -402,6 +415,69 @@ Triage these emails now.`;
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error(`[scheduler] Inbox triage failed: ${errMsg}`);
+
+      job.lastRun = new Date();
+      job.lastResult = "error";
+      job.lastDurationMs = Date.now() - startTime;
+
+      return { status: "error", error: errMsg };
+    }
+  }
+
+  /**
+   * Build digest: generate a build-in-public post from recent git + memory data.
+   * Runs every Monday — sends draft to Telegram for review before posting.
+   */
+  private async runBuildDigest(): Promise<{ status: string; content?: string; error?: string }> {
+    const startTime = Date.now();
+    const job = this.jobs.get("build-digest")!;
+
+    if (!this.config.github) {
+      return { status: "skipped", error: "GitHub not configured" };
+    }
+
+    try {
+      // 1. Gather commits from the past 7 days
+      const commits = await this.config.github.getBriefingSummary();
+
+      // 2. Gather recent session memories
+      const memories = await this.config.memoryService.retrieve("session progress built this week", 10);
+      const memoryText = memories.map((m) => `- [${m.type}] ${m.content}`).join("\n");
+
+      // 3. Generate build log via Agent
+      const prompt = `You are writing a weekly "build in public" digest for X/Twitter.
+
+Given the following activity from the past week, create a concise, engaging thread (2-4 tweets, each under 280 chars).
+
+GIT ACTIVITY:
+${commits}
+
+SESSION MEMORIES:
+${memoryText || "No session memories this week."}
+
+Rules:
+- Write in first person as a solo builder
+- Be authentic, technical but accessible
+- Format each tweet clearly with [Tweet 1], [Tweet 2], etc.
+- No hashtags, no emojis
+- Focus on: what was built, why it matters, what was learned`;
+
+      const context = await this.config.contextEngine.gather("weekly build log digest");
+      const response = await this.config.agent.chat(prompt, context);
+
+      const content = `**Weekly Build Digest** (ready to post)\n\n${response.content}\n\n_Reply with /post to publish to X, or edit and post manually._`;
+
+      await this.config.telegram.sendProactiveMessage(content);
+
+      job.lastRun = new Date();
+      job.lastResult = "sent";
+      job.lastDurationMs = Date.now() - startTime;
+
+      console.log(`[scheduler] Build digest sent (${Date.now() - startTime}ms)`);
+      return { status: "sent", content: response.content };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] Build digest failed: ${errMsg}`);
 
       job.lastRun = new Date();
       job.lastResult = "error";

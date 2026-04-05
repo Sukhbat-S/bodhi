@@ -23,13 +23,28 @@ function formatAge(dateStr: string): string {
   return `${Math.floor(diffD / 30)}mo ago`;
 }
 
+const MEMORY_TYPES = ["fact", "decision", "pattern", "preference", "event"] as const;
+
+const EXAMPLE_QUERIES = [
+  "deployment patterns",
+  "recent decisions",
+  "session summaries",
+  "architecture choices",
+  "debugging lessons",
+];
+
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const filteredResults = typeFilter
+    ? results.filter((m) => m.type === typeFilter)
+    : results;
 
   const search = useCallback(async (q: string) => {
     if (q.trim().length < 2) {
@@ -98,36 +113,87 @@ export default function SearchPage() {
         </div>
       </div>
 
+      {/* Type filter chips */}
+      {hasSearched && results.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => setTypeFilter(null)}
+            className={`text-xs px-3 py-1.5 rounded-full transition-colors ${
+              typeFilter === null
+                ? "bg-stone-700 text-stone-100"
+                : "bg-stone-800/60 text-stone-500 hover:text-stone-300"
+            }`}
+          >
+            All ({results.length})
+          </button>
+          {MEMORY_TYPES.map((t) => {
+            const count = results.filter((m) => m.type === t).length;
+            if (count === 0) return null;
+            const color = TYPE_COLORS[t] || TYPE_COLORS.fact;
+            return (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(typeFilter === t ? null : t)}
+                className={`text-xs px-3 py-1.5 rounded-full transition-colors ${
+                  typeFilter === t ? color : "bg-stone-800/60 text-stone-500 hover:text-stone-300"
+                }`}
+              >
+                {t} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Result count */}
+      {hasSearched && results.length > 0 && (
+        <p className="text-xs text-stone-600 mb-3">
+          {typeFilter ? `${filteredResults.length} of ${results.length}` : results.length} results
+        </p>
+      )}
+
       {/* Results */}
       {!hasSearched ? (
         <div className="text-center py-16 text-stone-500">
-          <p className="text-4xl mb-3">🔍</p>
-          <p className="text-lg font-medium">Search your memory</p>
-          <p className="text-sm mt-1">
-            Type to search across all memories using semantic similarity
+          <p className="text-lg font-medium mb-2">Search your memory</p>
+          <p className="text-sm mb-6">
+            Semantic similarity search across all memories
           </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {EXAMPLE_QUERIES.map((eq) => (
+              <button
+                key={eq}
+                onClick={() => { setQuery(eq); search(eq); }}
+                className="text-xs px-3 py-1.5 rounded-full bg-stone-800/60 text-stone-400 hover:text-stone-200 hover:bg-stone-700 transition-colors"
+              >
+                {eq}
+              </button>
+            ))}
+          </div>
         </div>
-      ) : results.length === 0 && !loading ? (
+      ) : filteredResults.length === 0 && !loading ? (
         <div className="text-center py-16 text-stone-500">
           <p className="text-lg font-medium">No results found</p>
           <p className="text-sm mt-1">Try a different query</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {results.map((m) => {
+          {filteredResults.map((m) => {
             const typeColor = TYPE_COLORS[m.type] || TYPE_COLORS.fact;
+            const pct = m.similarity ? Math.round(m.similarity * 100) : 0;
+            const barColor = pct >= 80 ? "bg-emerald-500/60" : pct >= 50 ? "bg-amber-500/60" : "bg-red-500/40";
             return (
               <div
                 key={m.id}
                 className="bg-stone-900 border border-stone-800 rounded-lg p-4 hover:border-stone-700 transition-colors"
               >
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span
                     className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${typeColor}`}
                   >
                     {m.type}
                   </span>
-                  {m.tags?.map((tag) => (
+                  {m.tags?.slice(0, 4).map((tag) => (
                     <span
                       key={tag}
                       className="text-[11px] text-stone-500 bg-stone-800 px-2 py-0.5 rounded-full"
@@ -139,17 +205,17 @@ export default function SearchPage() {
                     {formatAge(m.createdAt)}
                   </span>
                 </div>
-                <p className="text-sm text-stone-300 leading-relaxed">{m.content}</p>
-                {m.similarity !== undefined && m.similarity > 0 && (
-                  <div className="mt-2 flex items-center gap-1">
-                    <div className="h-1 flex-1 max-w-[60px] bg-stone-800 rounded-full overflow-hidden">
+                <p className="text-sm text-stone-300 leading-relaxed break-words">{m.content}</p>
+                {pct > 0 && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 max-w-[120px] bg-stone-800 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-emerald-500/50 rounded-full"
-                        style={{ width: `${Math.round(m.similarity * 100)}%` }}
+                        className={`h-full ${barColor} rounded-full`}
+                        style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-stone-600">
-                      {Math.round(m.similarity * 100)}% match
+                    <span className={`text-[11px] font-medium ${pct >= 80 ? "text-emerald-500" : pct >= 50 ? "text-amber-500" : "text-stone-600"}`}>
+                      {pct}%
                     </span>
                   </div>
                 )}

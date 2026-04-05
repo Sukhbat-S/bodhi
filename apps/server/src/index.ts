@@ -1160,6 +1160,124 @@ Return ONLY valid JSON (no markdown, no code fences):
     return c.json({ adaptedContent, results });
   });
 
+  // ---- Content Engine (Build Logs + Weekly Digest) ----
+
+  app.post("/api/content/buildlog", async (c) => {
+    const body = await c.req.json<{ days?: number; topic?: string }>().catch(() => ({ days: 7, topic: "" }));
+    const days = body.days || 7;
+    const topic = body.topic || "";
+
+    // Gather recent commits from GitHub
+    let commits: Array<{ message: string; date: string; repo: string }> = [];
+    if (githubService) {
+      try {
+        const allCommits = await githubService.getRecentCommits(30);
+        const cutoff = Date.now() - days * 86400000;
+        commits = allCommits
+          .filter((c) => new Date(c.date).getTime() > cutoff)
+          .map((c) => ({ message: c.message, date: c.date, repo: c.repo }));
+      } catch { /* GitHub optional */ }
+    }
+
+    // Gather recent session memories
+    let memories: Array<{ content: string; type: string }> = [];
+    try {
+      const searchQuery = `session progress ${topic} recent work`.trim();
+      const retrieved = await memoryService.retrieve(searchQuery, 10);
+      memories = retrieved.map((m) => ({ content: m.content, type: m.type }));
+    } catch { /* memories optional */ }
+
+    // Generate build log via Bridge
+    const prompt = `You are a content writer for "build in public" posts on X/Twitter.
+
+Given the following raw data about what was built recently, create an engaging post.
+
+COMMITS (last ${days} days):
+${commits.length > 0 ? commits.map((c) => `- ${c.message} (${c.repo})`).join("\n") : "No commits available"}
+
+SESSION MEMORIES:
+${memories.length > 0 ? memories.map((m) => `- [${m.type}] ${m.content}`).join("\n") : "No session memories available"}
+
+${topic ? `FOCUS TOPIC: ${topic}` : ""}
+
+Rules:
+- Write in first person as a solo builder
+- Format: What I built -> Why it matters -> What I learned
+- If enough content for a thread, return 2-4 tweets. Otherwise return 1 tweet.
+- Each tweet must be under 280 characters
+- Be authentic, technical but accessible. No hashtags unless natural.
+- Do NOT use emojis
+
+Return ONLY valid JSON (no markdown, no code fences):
+{"tweets": ["tweet1", "tweet2"], "summary": "one-line summary of what was built"}`;
+
+    try {
+      const response = await agent.chat(prompt);
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return c.json({
+          buildlog: { tweets: parsed.tweets || [], summary: parsed.summary || "" },
+          rawData: { commits: commits.length, memories: memories.length },
+        });
+      }
+      return c.json({
+        buildlog: { tweets: [response.content.slice(0, 280)], summary: "Raw response" },
+        rawData: { commits: commits.length, memories: memories.length },
+      });
+    } catch (err) {
+      console.error("[content] Buildlog generation failed:", err instanceof Error ? err.message : err);
+      return c.json({ error: "Failed to generate build log" }, 500);
+    }
+  });
+
+  app.post("/api/content/weekly-digest", async (c) => {
+    // Gather 7-day data
+    let commits: Array<{ message: string; date: string; repo: string }> = [];
+    if (githubService) {
+      try {
+        const allCommits = await githubService.getRecentCommits(50);
+        const cutoff = Date.now() - 7 * 86400000;
+        commits = allCommits
+          .filter((c) => new Date(c.date).getTime() > cutoff)
+          .map((c) => ({ message: c.message, date: c.date, repo: c.repo }));
+      } catch { /* optional */ }
+    }
+
+    let memories: Array<{ content: string; type: string }> = [];
+    try {
+      const retrieved = await memoryService.retrieve("session summary weekly progress", 15);
+      memories = retrieved.map((m) => ({ content: m.content, type: m.type }));
+    } catch { /* optional */ }
+
+    const prompt = `Summarize this week's work for a developer's weekly digest.
+
+COMMITS THIS WEEK (${commits.length}):
+${commits.slice(0, 20).map((c) => `- ${c.message}`).join("\n") || "None"}
+
+SESSION MEMORIES:
+${memories.map((m) => `- [${m.type}] ${m.content}`).join("\n") || "None"}
+
+Create:
+1. A weekly digest paragraph (3-5 sentences, conversational)
+2. A tweet-sized summary (under 280 chars)
+
+Return ONLY valid JSON:
+{"digest": "...", "stats": {"commits": ${commits.length}, "memories": ${memories.length}}, "tweets": ["tweet-sized summary"]}`;
+
+    try {
+      const response = await agent.chat(prompt);
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return c.json(JSON.parse(jsonMatch[0]));
+      }
+      return c.json({ digest: response.content, stats: { commits: commits.length, memories: memories.length }, tweets: [] });
+    } catch (err) {
+      console.error("[content] Weekly digest failed:", err instanceof Error ? err.message : err);
+      return c.json({ error: "Failed to generate weekly digest" }, 500);
+    }
+  });
+
   // ---- Push Notification Endpoints ----
 
   app.get("/api/push/vapid-key", (c) => {

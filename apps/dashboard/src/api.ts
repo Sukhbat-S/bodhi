@@ -473,6 +473,27 @@ export function getPushStatus() {
   return request<PushStatus>("/push/status");
 }
 
+// --- Content Engine ---
+
+export interface BuildlogResult {
+  tweets: string[];
+  summary: string;
+}
+
+export function generateBuildlog(params?: { days?: number; topic?: string }) {
+  return request<{ buildlog: BuildlogResult; rawData: { commits: number; memories: number } }>(
+    "/content/buildlog",
+    { method: "POST", body: JSON.stringify(params || {}) }
+  );
+}
+
+export function generateWeeklyDigest() {
+  return request<{ digest: string; stats: { commits: number; memories: number }; tweets: string[] }>(
+    "/content/weekly-digest",
+    { method: "POST" }
+  );
+}
+
 // --- Chat ---
 
 export interface ChatMessage {

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
+import AboutPage from "./pages/AboutPage";
 import ReflectionPage from "./pages/ReflectionPage";
 import StatusPage from "./pages/StatusPage";
 import MemoriesPage from "./pages/MemoriesPage";
@@ -20,6 +21,13 @@ import EntityGraphPage from "./pages/EntityGraphPage";
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+  const isPublicPage = location.pathname === "/about";
+
+  // Public pages render without sidebar or mobile header
+  if (isPublicPage) {
+    return <Routes><Route path="/about" element={<AboutPage />} /></Routes>;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">

@@ -1167,9 +1167,25 @@ Return ONLY valid JSON (no markdown, no code fences):
     const days = body.days || 7;
     const topic = body.topic || "";
 
-    // Gather recent commits from GitHub
+    // Gather recent commits — local git log first (catches unpushed), then GitHub API
     let commits: Array<{ message: string; date: string; repo: string }> = [];
-    if (githubService) {
+    try {
+      const { execSync } = await import("child_process");
+      const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+      const log = execSync(
+        `git log --since="${since}" --pretty=format:"%s|||%aI" --no-merges -30`,
+        { cwd: config.BODHI_PROJECT_DIR || process.cwd(), encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      if (log) {
+        commits = log.split("\n").map((line) => {
+          const [message, date] = line.split("|||");
+          return { message, date, repo: "bodhi (local)" };
+        });
+      }
+    } catch { /* local git optional */ }
+
+    // Supplement with GitHub API if local git found nothing
+    if (commits.length === 0 && githubService) {
       try {
         const allCommits = await githubService.getRecentCommits(30);
         const cutoff = Date.now() - days * 86400000;
@@ -1232,9 +1248,24 @@ Return ONLY valid JSON (no markdown, no code fences):
   });
 
   app.post("/api/content/weekly-digest", async (c) => {
-    // Gather 7-day data
+    // Gather 7-day data — local git first, then GitHub API
     let commits: Array<{ message: string; date: string; repo: string }> = [];
-    if (githubService) {
+    try {
+      const { execSync } = await import("child_process");
+      const since = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+      const log = execSync(
+        `git log --since="${since}" --pretty=format:"%s|||%aI" --no-merges -50`,
+        { cwd: config.BODHI_PROJECT_DIR || process.cwd(), encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      if (log) {
+        commits = log.split("\n").map((line) => {
+          const [message, date] = line.split("|||");
+          return { message, date, repo: "bodhi (local)" };
+        });
+      }
+    } catch { /* local git optional */ }
+
+    if (commits.length === 0 && githubService) {
       try {
         const allCommits = await githubService.getRecentCommits(50);
         const cutoff = Date.now() - 7 * 86400000;

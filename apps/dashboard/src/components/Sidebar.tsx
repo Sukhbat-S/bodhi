@@ -333,6 +333,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </button>
           </div>
           <NotificationToggle />
+          <button
+            onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-md text-xs text-stone-500 hover:text-stone-400 hover:bg-stone-800/50 transition-colors"
+          >
+            <span>Command Palette</span>
+            <kbd className="text-[10px] border border-stone-700 rounded px-1.5 py-0.5 text-stone-600">Cmd+K</kbd>
+          </button>
           <p className="text-xs text-stone-600">v0.9.0</p>
         </div>
       </aside>

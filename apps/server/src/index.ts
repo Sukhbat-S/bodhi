@@ -23,7 +23,7 @@ import { Bridge } from "@seneca/bridge";
 import { AnthropicBackend } from "@seneca/anthropic";
 import { getDb } from "@seneca/db";
 import { sql } from "drizzle-orm";
-import { MemoryService, MemoryExtractor, MemoryContextProvider, MemorySynthesizer, InsightGenerator, EntityService, EntityBackfill, EntityContextProvider } from "@seneca/memory";
+import { MemoryService, MemoryExtractor, MemoryContextProvider, MemorySynthesizer, InsightGenerator, EntityService, EntityBackfill, EntityContextProvider, GoalContextProvider } from "@seneca/memory";
 import { TelegramBot } from "@seneca/channel-telegram";
 import { Scheduler } from "@seneca/scheduler";
 import { NotionService, NotionContextProvider } from "@seneca/notion";
@@ -267,6 +267,8 @@ async function main() {
   }
   const entityProvider = new EntityContextProvider(entityService);
   contextEngine.register(entityProvider);
+  const goalProvider = new GoalContextProvider(memoryService);
+  contextEngine.register(goalProvider);
   const providerCount = 3 + (notionProvider ? 1 : 0) + (gmailProvider ? 1 : 0) + (calendarProvider ? 1 : 0) + (githubProvider ? 1 : 0) + (vercelProvider ? 1 : 0) + (supabaseAwarenessProvider ? 1 : 0);
   console.log(`  Context: initialized (${providerCount} provider${providerCount > 1 ? "s" : ""}, includes project knowledge)`);
 

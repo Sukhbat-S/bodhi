@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   getGitHubStatus,
   getGitHubActivity,
+  generateBuildlog,
   type GitHubCommit,
   type GitHubPR,
   type GitHubIssue,
@@ -30,6 +31,9 @@ export default function GitHubPage() {
   const [repos, setRepos] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [buildLog, setBuildLog] = useState<string[] | null>(null);
+  const [buildLogLoading, setBuildLogLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -103,12 +107,65 @@ export default function GitHubPage() {
   return (
     <div className="p-8 max-w-4xl">
       {/* Header */}
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-stone-100">GitHub</h2>
-        <p className="text-sm text-stone-400 mt-1">
-          {repos.length > 0 ? repos.join(", ") : "Tracking repositories"}
-        </p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-stone-100">GitHub</h2>
+          <p className="text-sm text-stone-400 mt-1">
+            {repos.length > 0 ? repos.join(", ") : "Tracking repositories"}
+          </p>
+        </div>
+        <button
+          onClick={async () => {
+            setBuildLogLoading(true);
+            setBuildLog(null);
+            try {
+              const res = await generateBuildlog({ days: 7 });
+              setBuildLog(res.buildlog.tweets);
+            } catch {
+              setBuildLog(["Failed to generate build log. Is the server running?"]);
+            } finally {
+              setBuildLogLoading(false);
+            }
+          }}
+          disabled={buildLogLoading}
+          className="px-4 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-sm font-medium hover:bg-amber-500/20 transition-colors border border-amber-500/20 disabled:opacity-50"
+        >
+          {buildLogLoading ? "Generating..." : "Generate Build Log"}
+        </button>
       </div>
+
+      {/* Build Log Result */}
+      {buildLog && (
+        <div className="mb-6 rounded-xl border border-amber-500/20 bg-amber-500/5 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs uppercase tracking-wider text-amber-500">Build Log Draft</h3>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(buildLog.join("\n\n"));
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="text-xs text-stone-400 hover:text-stone-200 transition-colors"
+            >
+              {copied ? "Copied" : "Copy all"}
+            </button>
+          </div>
+          <div className="space-y-3">
+            {buildLog.map((tweet, i) => (
+              <div key={i} className="bg-stone-900/60 rounded-lg p-3">
+                <p className="text-sm text-stone-300 leading-relaxed">{tweet}</p>
+                <p className="text-[10px] text-stone-600 mt-1">{tweet.length}/280</p>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setBuildLog(null)}
+            className="mt-3 text-xs text-stone-500 hover:text-stone-400 transition-colors"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="text-red-400 bg-red-500/10 px-4 py-3 rounded-lg mb-6 text-sm">

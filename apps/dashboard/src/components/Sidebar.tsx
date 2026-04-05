@@ -340,7 +340,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <span>Command Palette</span>
             <kbd className="text-[10px] border border-stone-700 rounded px-1.5 py-0.5 text-stone-600">Cmd+K</kbd>
           </button>
-          <p className="text-xs text-stone-600">v0.9.0</p>
+          <p className="text-xs text-stone-600">v{__APP_VERSION__}</p>
         </div>
       </aside>
     </>

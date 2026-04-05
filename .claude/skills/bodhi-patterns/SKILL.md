@@ -8,10 +8,12 @@ user-invocable: false
 
 ## Monorepo Structure
 
-TypeScript ESM monorepo with npm workspaces. 14 packages under `packages/`, 2 apps under `apps/`.
+TypeScript ESM monorepo with npm workspaces. 15 packages under `packages/`, 2 apps under `apps/`.
 
-- **All AI reasoning** routes through `packages/bridge/` → Claude Code CLI subprocess (NOT Anthropic API directly)
-- Agent (`packages/core/`) uses `AIBackend` interface, Bridge implements it
+- Agent (`packages/core/`) uses `AIBackend` interface with two implementations:
+  - `Bridge` (`packages/bridge/`) — Claude Code CLI subprocess ($0 via Max subscription)
+  - `AnthropicBackend` (`packages/anthropic/`) — Anthropic API (for users without Max)
+- Server selects backend via `AI_BACKEND` env var (default: bridge)
 - Server (`apps/server/`) wires everything together with Hono on port 4000
 - Dashboard (`apps/dashboard/`) is React 19 + Vite 6 + Tailwind 3 SPA on port 5173
 
@@ -40,7 +42,7 @@ Input text → Voyage AI embeddings → pgvector (Supabase Postgres) → similar
 
 Providers implement `ContextProvider` interface with `priority` (higher = loaded first) and `getContext(query)`.
 
-Priority order: memory=10, projects=9, notion=8, gmail/calendar=7, github/vercel/supabase=6.
+Priority order: memory=10, goals=9.5, projects=9, entities=8, notion=8, gmail/calendar=7, github/vercel/supabase=6.
 
 Keyword-based relevance filtering in each provider.
 

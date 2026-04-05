@@ -4,8 +4,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
-import { getStatus, searchMemories, type StatusResponse, type Memory } from "../api";
+import { getStatus, type StatusResponse, type Memory } from "../api";
 
 // --- Fade-in on scroll ---
 function FadeIn({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -83,6 +82,24 @@ const TYPE_COLORS: Record<string, string> = {
   event: "text-rose-400",
 };
 
+// Sample results — no real data exposed on public landing page
+const SAMPLE_RESULTS: Record<string, Memory[]> = {
+  "architecture decisions": [
+    { id: "s1", content: "Chose Bridge pattern to route all AI reasoning through Claude Code CLI — keeps costs at $0 with Max subscription", type: "decision", importance: 0.9, confidence: 0.95, similarity: 0.94, createdAt: "2026-03-15", tags: ["architecture", "bridge"] },
+    { id: "s2", content: "Context providers use priority-based ordering: memory=10, goals=9.5, projects=9, integrations=6-8", type: "fact", importance: 0.8, confidence: 0.9, similarity: 0.87, createdAt: "2026-03-20", tags: ["architecture", "context"] },
+    { id: "s3", content: "All packages use ESM + TypeScript strict mode — no CommonJS anywhere in the monorepo", type: "decision", importance: 0.7, confidence: 0.85, similarity: 0.82, createdAt: "2026-02-28", tags: ["architecture", "typescript"] },
+  ],
+  "deployment patterns": [
+    { id: "s4", content: "Docker build uses multi-stage: deps → build → runtime. Final image ~180MB", type: "fact", importance: 0.7, confidence: 0.9, similarity: 0.91, createdAt: "2026-03-25", tags: ["deployment", "docker"] },
+    { id: "s5", content: "Vercel SPA routing requires vercel.json with catch-all rewrite to index.html", type: "pattern", importance: 0.6, confidence: 0.95, similarity: 0.85, createdAt: "2026-04-04", tags: ["deployment", "vercel"] },
+  ],
+  "memory system": [
+    { id: "s6", content: "Memory synthesis runs daily at 03:00 — dedup, cluster, decay, promote cycle", type: "fact", importance: 0.8, confidence: 0.9, similarity: 0.93, createdAt: "2026-03-10", tags: ["memory", "synthesis"] },
+    { id: "s7", content: "Voyage AI voyage-4-lite embeddings + pgvector cosine similarity for semantic search", type: "fact", importance: 0.8, confidence: 0.95, similarity: 0.89, createdAt: "2026-02-20", tags: ["memory", "embeddings"] },
+    { id: "s8", content: "Cross-session reasoning detects recurring themes automatically and creates pattern memories", type: "pattern", importance: 0.85, confidence: 0.9, similarity: 0.86, createdAt: "2026-03-18", tags: ["memory", "cross-session"] },
+  ],
+};
+
 function LiveSearchDemo() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Memory[]>([]);
@@ -97,12 +114,10 @@ function LiveSearchDemo() {
     if (q.trim().length < 2) { setResults([]); setSearched(false); return; }
     setLoading(true);
     setSearched(true);
-    try {
-      const data = await searchMemories(q, 5);
-      setResults(data.memories);
-    } catch {
-      setResults([]);
-    }
+    // Use sample data — never expose real memories on public landing page
+    await new Promise(r => setTimeout(r, 300 + Math.random() * 400));
+    const key = Object.keys(SAMPLE_RESULTS).find(k => q.toLowerCase().includes(k) || k.includes(q.toLowerCase()));
+    setResults(key ? SAMPLE_RESULTS[key] : SAMPLE_RESULTS["architecture decisions"]);
     setLoading(false);
   };
 
@@ -237,8 +252,8 @@ export default function AboutPage() {
             <span className="font-bold text-stone-100">BODHI</span>
           </div>
           <div className="flex items-center gap-4">
-            <Link to="/" className="text-sm text-stone-400 hover:text-stone-200 transition-colors">Dashboard</Link>
             <a href="https://github.com/Sukhbat-S/bodhi" target="_blank" rel="noreferrer" className="text-sm text-stone-400 hover:text-stone-200 transition-colors">GitHub</a>
+            <a href="https://x.com/SukhbatSosorba3" target="_blank" rel="noreferrer" className="text-sm text-stone-400 hover:text-stone-200 transition-colors">X / Twitter</a>
           </div>
         </div>
       </nav>
@@ -501,8 +516,7 @@ export default function AboutPage() {
           <div className="flex justify-center gap-6">
             <a href="https://github.com/Sukhbat-S/bodhi" target="_blank" rel="noreferrer" className="text-sm text-stone-500 hover:text-stone-300 transition-colors">GitHub</a>
             <a href="https://x.com/SukhbatSosorba3" target="_blank" rel="noreferrer" className="text-sm text-stone-500 hover:text-stone-300 transition-colors">X / Twitter</a>
-            <Link to="/" className="text-sm text-stone-500 hover:text-stone-300 transition-colors">Dashboard</Link>
-            <Link to="/chat" className="text-sm text-stone-500 hover:text-stone-300 transition-colors">Chat</Link>
+            <a href="https://x.com/SukhbatSosorba3" target="_blank" rel="noreferrer" className="text-sm text-stone-500 hover:text-stone-300 transition-colors">X / Twitter</a>
           </div>
         </div>
       </footer>

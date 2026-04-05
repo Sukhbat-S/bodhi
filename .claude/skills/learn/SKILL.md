@@ -16,6 +16,7 @@ If the user provided an argument (e.g., `/learn TypeScript generics are covarian
    - **pattern**: recurring behavior, approach, or debugging strategy
    - **preference**: likes, dislikes, values, tool preferences
    - **event**: milestone, deadline, important occurrence
+   - **goal**: aspirational target or objective the user is working toward
 3. Suggest importance (0.1-1.0):
    - 0.3-0.5: nice to know
    - 0.5-0.7: useful reference

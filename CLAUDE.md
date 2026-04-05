@@ -1,6 +1,7 @@
 # BODHI — Project Intelligence File
 
 > Personal AI companion for Sukhbat. Built as a TypeScript monorepo.
+> Version tracked in root `package.json` — currently v0.9.0.
 
 ## Quick Start
 
@@ -14,61 +15,74 @@ Auto-start on terminal open: `source ~/Documents/bodhi/scripts/bodhi-autostart.s
 
 ## Architecture
 
-Monorepo with npm workspaces. 14 packages, all TypeScript ESM.
+Monorepo with npm workspaces. 15 packages, all TypeScript ESM.
 
 ```
 packages/
   core/                — Agent + ContextEngine (AIBackend interface)
   bridge/              — Claude Code CLI subprocess ($0 via Max subscription)
+  anthropic/           — Anthropic API backend (alternative to Bridge, for users without Max)
   db/                  — Drizzle ORM + Supabase Postgres (pgvector)
-  memory/              — MemoryService + MemoryExtractor + MemoryContextProvider
+  memory/              — MemoryService + MemoryExtractor + GoalContextProvider
   google/              — Gmail + Calendar (shared OAuth2, read-only)
   knowledge/           — Notion knowledge base context provider
   github/              — GitHub activity tracking (commits, PRs, issues)
   vercel/              — Vercel deployment tracking
   supabase-awareness/  — Supabase project health monitoring
-  mcp-server/          — MCP server for Claude Code integration (8 tools)
-  scheduler/           — node-cron proactive briefings (morning/evening/weekly)
+  mcp-server/          — MCP server for Claude Code integration (10 tools)
+  scheduler/           — node-cron proactive briefings (morning/evening/weekly/build-digest)
+  social/              — Social media integrations
   channels/
     telegram/          — Telegraf bot (single-user, allowedUserId gated)
 apps/
   server/              — Hono API (port 4000) + all service wiring
-  dashboard/           — React 19 + Vite 6 + Tailwind 3 SPA (port 5173)
+  dashboard/           — React 19 + Vite 6 + Tailwind 3 SPA (17 pages)
 ```
+
+### Dashboard Pages
+
+Reflection (home), Chat, Search, Memories, Entities, Briefings, Timeline, Calendar, Inbox, GitHub, Vercel, Supabase, Notion, Ecosystem, Status, Quality, About (public landing page).
+
+### Deployment
+
+- **Local/VPS**: Hono serves API + static dashboard on port 4000
+- **Landing page**: Vercel at `dashboard-chi-plum.vercel.app/about` (static only, no backend)
+- **Vercel SPA routing**: `vercel.json` with catch-all rewrite to `index.html`
 
 ## Key Patterns
 
-- **ALL AI reasoning** routes through Bridge → Claude Code CLI (not Anthropic API)
-- Agent uses `AIBackend` interface, Bridge implements it
-- Memory uses Voyage AI for embeddings, pgvector for similarity search
+- **AI Backend**: Agent uses `AIBackend` interface. Two implementations: `Bridge` (Claude Code CLI, $0 with Max) and `AnthropicBackend` (API, for users without Max). Server selects based on `AI_BACKEND` env var.
+- Memory uses Voyage AI (`voyage-4-lite`) for embeddings, pgvector for cosine similarity search
+- **Memory types**: fact, decision, pattern, preference, event, goal
+- **Context providers** (priority order): memory=10, goals=9.5, projects=9, entities=8, notion=8, gmail/calendar=7, github/vercel/supabase=6. Keyword-based relevance.
 - Telegram bot: single-user only, `allowedUserId` from env
 - Dashboard proxies `/api/*` to `:4000` via Vite config
 - Scheduler: non-blocking start (Telegraf `launch()` never resolves)
 - `app.onError()` global handler returns JSON errors, never HTML
-- **New integration pattern**: optional init gated by env var (see Notion/Google in `index.ts`)
-- **Context providers**: memory=priority 10, projects=9, notion=8, gmail/calendar=7, github/vercel/supabase=6. Keyword-based relevance.
+- **Integration pattern**: optional init gated by env var (see Notion/Google in `index.ts`)
 - **Briefing prompts**: must explicitly instruct the agent to include each data section, or it may ignore context
 - **Google OAuth tokens**: stored in `.google-token.json` (gitignored), auto-refreshes
 - **Conversation history**: Agent has no DB dependency — server passes `history` array to `chat()`/`stream()`. Both web chat and Telegram persist via ConversationService.
 - **ConversationService**: lives in `apps/server/src/services/conversation.ts`, uses Drizzle schema directly
-- **Telegram persistence**: Conversations persist via ConversationService with 30-min thread rotation. New thread created after inactivity gap.
+- **Telegram persistence**: Conversations persist via ConversationService with 30-min thread rotation
 - **Dashboard served from Hono**: In production, Vite builds dashboard into `apps/dashboard/dist`, Hono serves it via `serveStatic`. In dev, Vite proxies `/api/*` to `:4000`.
-- **Memory Quality**: `/api/memories/insights` (InsightGenerator SQL) and `/api/memories/quality` (stale/neglected/frequent analysis). Dashboard QualityPage shows overview cards, tag trends, and boost/archive actions.
+- **Memory Quality**: `/api/memories/insights` (InsightGenerator SQL) and `/api/memories/quality` (stale/neglected/frequent analysis)
 - **MemorySynthesizer**: daily cron at 03:00 — dedup (>0.92 similarity), connect (clusters → AI synthesis), decay (stale -0.1 confidence), promote (frequent +0.1 importance)
-- **InsightGenerator**: pure SQL pattern detection — tag trends, stalled decisions, activity rates, neglected knowledge. Feeds into briefing prompts.
-- **Cross-session reasoning**: MemoryExtractor.crossReference() runs after each extraction, detects recurring themes across sessions, auto-creates pattern memories tagged `["auto-synthesis", "cross-session"]`
-- **Memory source "synthesis"**: auto-generated memories are tagged with source="synthesis" to distinguish from manual/extraction
-- **GitHub tracking**: plain `fetch` with Bearer token (no octokit). Auto-discovers repos via `/user/repos` if `GITHUB_REPOS` not set. Briefings include open PRs, recent commits, issues.
-- **Vercel tracking**: plain `fetch` with Bearer token. Optional `teamId` for team-scoped queries. Tracks deployment state (READY/BUILDING/ERROR), build duration, commit refs.
-- **Supabase awareness**: Management API at `api.supabase.com`. Monitors project health status, table row counts. Briefings flag non-healthy status.
-- **Consolidated commands**: Only 2 commands needed — `/session-start` (load context + health check) and `/session-save` (commit work + extract knowledge). The separate `/commit` skill was removed; its logic is now built into `/session-save`. This prevents session log gaps (like 068-074) caused by forgetting to save.
+- **InsightGenerator**: pure SQL pattern detection — tag trends, stalled decisions, activity rates, neglected knowledge
+- **Cross-session reasoning**: MemoryExtractor.crossReference() detects recurring themes across sessions, auto-creates pattern memories tagged `["auto-synthesis", "cross-session"]`
+- **GoalContextProvider**: priority 9.5, injects active goals into every conversation. Flags stale goals (>14d check progress, >30d ask if still active)
+- **Content engine**: `/api/content/buildlog` reads local git log first, falls back to GitHub API. `/api/content/weekly-digest` for 7-day summaries. Build-digest cron runs Mondays at 10:00.
+- **Onboarding detection**: Server checks if < 5 memories exist, injects warmth context for new users
+- **Command palette**: Cmd+K global shortcut, 22 commands (navigation + actions)
+- **Landing page**: `/about` route, full-width (no sidebar), sample data for search demo (no real API calls), live status from `/api/status`
+- **Version**: Single source of truth in root `package.json`, injected via Vite `define` as `__APP_VERSION__`
+- **Consolidated commands**: Only 2 commands needed — `/session-start` and `/session-save`
 
 ## Dev Workflow
 
 - `tsx watch` auto-reloads server on file changes (no manual restart needed for TS edits)
 - Kill port before restart: `lsof -ti:4000 | xargs kill -9`
 - Quote URLs with query params in zsh: `curl -s "http://...?param=val"`
-- `googleapis` Credentials type needs `as Record<string, unknown>` cast for strict TS
 - Telegram bot can timeout on startup if port is occupied — always kill stale processes first
 - Test briefings: `curl -s -X POST localhost:4000/api/scheduler/trigger -H "Content-Type: application/json" -d '{"type":"morning"}'`
 
@@ -78,10 +92,9 @@ See `REFERENCE.md` for environment variables, API endpoint table, and deployment
 
 Every Claude Code session on BODHI should follow this flow:
 
-- **Start**: Run `/session-start` to load context from BODHI's memory (last session, pending items, today's schedule)
-- **During**: Run `/reflect` when you notice patterns, hit breakthroughs, or want to capture insights mid-session
-- **During**: Run `/learn` to explicitly teach BODHI something (technical or personal)
-- **End**: Run `/session-save` — commits any uncommitted work, then extracts and stores all session knowledge to BODHI's memory. This is the only end-of-session command needed.
+- **Start**: Run `/session-start` to load context from BODHI's memory
+- **During**: Run `/reflect` for mid-session insights or `/learn` to teach BODHI something
+- **End**: Run `/session-save` — commits work + extracts session knowledge to BODHI's memory
 
 ## Claude Code Infrastructure
 
@@ -89,71 +102,69 @@ Skills, subagents, hooks, and permissions live in `.claude/`.
 
 ### Skills (`.claude/skills/`)
 
-Skills use SKILL.md format with YAML frontmatter for auto-invocation, tool restrictions, and forked context execution.
-
 #### User-Invocable Skills
 
-| Skill | Usage | Purpose |
-|-------|-------|---------|
-| `/start` | `/start` | **Full startup**: Check/start server + load session context |
-| `/session-save` | `/session-save` | **End of session**: Commits work + extracts all session knowledge to BODHI memory |
-| `/session-start` | `/session-start` | **Start of session**: Load project context, pending items, today's schedule |
-| `/reflect` | `/reflect` | Mid-session checkpoint: capture insights before they're forgotten |
-| `/learn` | `/learn [topic]` | Explicitly teach BODHI something (guided storage) |
-| `/recall` | `/recall [query]` | Quick memory search (e.g., `/recall deployment patterns`) |
-| `/briefing` | `/briefing morning` | Trigger morning/evening/weekly briefing |
-| `/deploy` | `/deploy` | Build all packages, restart server, verify status |
-| `/status` | `/status` | Quick health check (API + Gmail + Calendar) |
-| `/review` | `/review` | Code review recent changes (forked context) |
-| `/health-report` | `/health-report` | Full system health report (forked context) |
+| Skill | Purpose |
+|-------|---------|
+| `/start` | Full startup: check/start server + load session context |
+| `/session-save` | End of session: commit work + extract knowledge |
+| `/session-start` | Start of session: load context, pending items, schedule |
+| `/reflect` | Mid-session checkpoint: capture insights |
+| `/learn` | Explicitly teach BODHI something |
+| `/recall` | Quick memory search |
+| `/briefing` | Trigger morning/evening/weekly briefing |
+| `/buildlog` | Generate build-in-public post from git + memories |
+| `/deploy` | Build all packages, restart server, verify |
+| `/status` | Quick health check |
+| `/review` | Code review recent changes (forked context) |
+| `/health-report` | Full system health report (forked context) |
 
 #### Auto-Invocation Skills (BODHI's Brain)
 
-These skills Claude loads automatically when relevant — no `/` invocation needed:
-
 | Skill | Triggers On |
 |-------|-------------|
-| `bodhi-patterns` | Working on BODHI code — architecture, Bridge routing, memory flow |
-| `jewelry-patterns` | Working on jewelry/shigtgee code — admin pages, API routes, Supabase |
-| `collaboration` | All sessions — workflow preferences, VPS guidance, communication style |
-| `auto-health` | Errors, server issues, Telegram not responding |
+| `bodhi-patterns` | Working on BODHI code |
+| `jewelry-patterns` | Working on jewelry/shigtgee code |
+| `collaboration` | All sessions — workflow preferences |
+| `auto-health` | Errors, server issues |
 
 ### Subagents (`.claude/agents/`)
 
 | Agent | Purpose |
 |-------|---------|
-| `build-verifier` | Run `npm run build`, report errors, suggest fixes (read-only) |
-| `code-simplifier` | Review recent changes, suggest simplifications (read-only) |
-
-### HEARTBEAT.md — Proactive Monitoring
-
-`HEARTBEAT.md` at project root defines autonomous health check tasks. Run via `scripts/heartbeat.sh` (cron every 30 minutes). Claude Code reads the checklist and executes applicable tasks — alerts via Telegram only when issues are found.
+| `build-verifier` | Run `npm run build`, report errors (read-only) |
+| `code-simplifier` | Review changes, suggest simplifications (read-only) |
 
 ### Hooks
 
-- **PostToolUse** (`Write|Edit`): Runs `tsc --noEmit` after every file edit to catch type errors immediately.
+- **PostToolUse** (`Write|Edit`): Runs `tsc --noEmit` after every file edit.
 
 ### Permissions (`.claude/settings.json`)
 
-Pattern-based allow list for common commands: npm, git, curl to localhost, lsof/kill for port management.
+Pattern-based allow list for common commands: npm, git, curl to localhost, lsof/kill.
 
 ## MCP Server (`packages/mcp-server/`)
 
 Exposes BODHI's memory and context to Claude Code sessions via MCP protocol.
 
-Tools: `search_memories`, `store_memory`, `store_session_summary`, `get_project_context`, `get_recent_conversations`, `get_todays_context`, `get_memory_stats`, `get_bodhi_status`
+Tools: `search_memories`, `store_memory`, `store_session_summary`, `get_project_context`, `get_recent_conversations`, `get_todays_context`, `get_memory_stats`, `get_bodhi_status`, `generate_build_log`, `generate_weekly_digest`
 
-Used by skills (`/session-save`, `/session-start`, `/recall`, etc.) to persist knowledge across sessions.
+## Security Notes
+
+- **No auth middleware on API** — server assumes single-user, local/VPS access only
+- **Landing page on Vercel is static-only** — no backend, no real data exposed, search demo uses sample data
+- **Before exposing server publicly**: must add bearer token auth middleware to all `/api/*` routes
+- All secrets in `.env` (gitignored). Never commit `.env`, `.google-token.json`, `*.key`, `*.pem`
 
 ## Known Issues
 
-- **Telegraf `launch()`**: Never resolves during long-polling. Scheduler and
-  all other services start independently (non-blocking telegram start).
+- **Telegraf `launch()`**: Never resolves during long-polling. All services start independently.
+- **X/Twitter API**: Credits depleted (402) — posting works via web, API read limited
 
 ## Build
 
 ```bash
-npm run build          # builds all 14 packages
+npm run build          # builds all 15 packages
 npm run build -w @seneca/scheduler  # build single package
 ```
 
@@ -167,11 +178,17 @@ npm run build -w @seneca/scheduler  # build single package
 6. Google — Gmail + Calendar (OAuth2, read-only) ✅
 7. Conversations — Thread persistence + dashboard history panel ✅
 8. Skills Suite — Session workflow (/session-save, /session-start, /reflect, /learn, /recall) ✅
-9. Deployment — Docker + VPS setup (Dockerfile, keep-alive, configurable paths) ✅
+9. Deployment — Docker + VPS setup (Dockerfile, keep-alive) ✅
 10. Intelligence — Self-improvement loop, cross-session reasoning, proactive insights ✅
 11. Dashboard on VPS + Quality — Hono serves SPA, memory quality management ✅
-12. Email & Calendar Pages — Gmail inbox + Calendar dashboard (zero backend changes) ✅
-13. Telegram Persistence — Conversation history persisted to DB, 30-min thread rotation ✅
+12. Email & Calendar Pages — Gmail inbox + Calendar dashboard ✅
+13. Telegram Persistence — Conversation history persisted to DB ✅
 14. Chat UX + Notion Dashboard — Streaming chat, Notion tasks/sessions page ✅
-15. Awareness Expansion — GitHub, Vercel, Supabase monitoring + auto-capture on commit ✅
-16. Skills 2.0 — SKILL.md migration, brain skills, forked-context skills, HEARTBEAT.md ✅
+15. Awareness Expansion — GitHub, Vercel, Supabase monitoring ✅
+16. Skills 2.0 — SKILL.md migration, brain skills, forked-context skills ✅
+17. Soul — Goal tracking, onboarding warmth, reflective briefings ✅
+18. Content Engine — Build log generation, weekly digest, /buildlog skill ✅
+19. Voice — macOS TTS scripts (voice.sh, morning.sh) ✅
+20. Landing Page — Public /about page on Vercel, audience-focused messaging ✅
+21. Anthropic Backend — AIBackend alternative for users without Claude Max ✅
+22. Open Source — README, .env.example, setup wizard, CI, deploy templates ✅

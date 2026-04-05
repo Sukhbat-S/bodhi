@@ -253,7 +253,7 @@ export default function ReflectionPage() {
                 <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-2 shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm text-stone-300 leading-relaxed">{g.content}</p>
-                  <p className="text-[11px] text-stone-600 mt-1">{formatAge(g.createdAt)}</p>
+                  <p className="text-[11px] text-stone-600 mt-1">{timeAgo(String(g.createdAt))}</p>
                 </div>
               </div>
             ))}

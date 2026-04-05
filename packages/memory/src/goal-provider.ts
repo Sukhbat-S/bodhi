@@ -31,8 +31,11 @@ export class GoalContextProvider implements ContextProvider {
       }
 
       const lines = goals.map((g) => {
-        const age = this.formatAge(g.createdAt instanceof Date ? g.createdAt.toISOString() : String(g.createdAt));
-        return `- ${g.content} (set ${age})`;
+        const dateStr = g.createdAt instanceof Date ? g.createdAt.toISOString() : String(g.createdAt);
+        const age = this.formatAge(dateStr);
+        const daysOld = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+        const staleWarning = daysOld > 30 ? " [STALE — ask if this is still active]" : daysOld > 14 ? " [aging — check progress]" : "";
+        return `- ${g.content} (set ${age})${staleWarning}`;
       });
 
       const content = [

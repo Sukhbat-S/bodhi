@@ -33,7 +33,20 @@ Data                  Supabase (pgvector)  ---  Voyage AI Embeddings  ---  Drizz
 Integrations          Gmail / Calendar / GitHub / Vercel / Supabase / Notion
 ```
 
-All AI reasoning routes through Bridge, which calls the Claude Code CLI as a subprocess. The Agent uses an `AIBackend` interface; Bridge implements it.
+All AI reasoning routes through the `AIBackend` interface. Two backends are available:
+
+- **Bridge** (default) -- spawns Claude Code CLI as a subprocess. Free with a Claude Max subscription.
+- **Anthropic API** -- direct API calls via `@anthropic-ai/sdk`. Set `ANTHROPIC_API_KEY` in `.env` to use. Works anywhere, no CLI needed.
+
+## Deploy
+
+Deploy your own BODHI instance with one click:
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/bodhi?referralCode=bodhi)
+
+Or use the Render blueprint (`render.yaml` included) or Docker (`docker compose up -d`).
+
+**Minimum requirements:** PostgreSQL with pgvector, Voyage AI key, Telegram bot token, and either a Claude Max subscription or Anthropic API key.
 
 ## Tech Stack
 

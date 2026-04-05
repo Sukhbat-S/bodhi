@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: bodhi
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ALLOWED_USER_ID
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: BODHI_OWNER_NAME
+        sync: false
+
+databases:
+  - name: bodhi-db
+    plan: free
+    postgresMajorVersion: "16"

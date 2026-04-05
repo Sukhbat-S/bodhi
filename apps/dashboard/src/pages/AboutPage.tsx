@@ -88,6 +88,9 @@ function LiveSearchDemo() {
   const [results, setResults] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [autoPlayed, setAutoPlayed] = useState(false);
+  const [userTookOver, setUserTookOver] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const doSearch = async (q: string) => {
@@ -104,19 +107,49 @@ function LiveSearchDemo() {
   };
 
   const handleChange = (val: string) => {
+    setUserTookOver(true);
     setQuery(val);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => doSearch(val), 400);
   };
 
+  // Auto-type when scrolled into view
+  useEffect(() => {
+    if (autoPlayed || userTookOver) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !autoPlayed && !userTookOver) {
+        setAutoPlayed(true);
+        const text = DEMO_QUERIES[Math.floor(Math.random() * DEMO_QUERIES.length)];
+        let i = 0;
+        const type = () => {
+          if (userTookOver) return;
+          i++;
+          setQuery(text.slice(0, i));
+          if (i < text.length) {
+            setTimeout(type, 50 + Math.random() * 30);
+          } else {
+            doSearch(text);
+          }
+        };
+        setTimeout(type, 600);
+      }
+    }, { threshold: 0.5 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [autoPlayed, userTookOver]);
+
   return (
-    <div>
+    <div ref={containerRef}>
       {/* Search input */}
       <div className="relative">
         <input
           type="text"
           value={query}
           onChange={(e) => handleChange(e.target.value)}
+          onFocus={() => setUserTookOver(true)}
           placeholder="Search BODHI's memory..."
           className="w-full bg-stone-900 text-stone-100 px-5 py-4 rounded-xl border border-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/40 placeholder-stone-500 text-sm"
         />

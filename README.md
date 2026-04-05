@@ -1,5 +1,7 @@
 # BODHI
 
+[![CI](https://github.com/Sukhbat-S/bodhi/actions/workflows/ci.yml/badge.svg)](https://github.com/Sukhbat-S/bodhi/actions/workflows/ci.yml)
+
 **Personal AI companion with long-term memory.**
 
 A TypeScript monorepo that turns a stateless LLM into a persistent, context-aware assistant -- one that remembers every conversation, tracks your projects, and gets smarter over time.

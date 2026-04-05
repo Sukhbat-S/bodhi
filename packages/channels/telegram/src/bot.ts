@@ -362,6 +362,50 @@ export class TelegramBot {
       }
     });
 
+    // /goal — Store a goal
+    this.bot.command("goal", async (ctx) => {
+      const text = ctx.message.text.replace(/^\/goal\s*/, "").trim();
+      if (!text) {
+        return ctx.reply("Usage: /goal <what you want to achieve>\n\nExample: /goal Launch BODHI on Hacker News this week");
+      }
+
+      try {
+        await this.memoryService.store({
+          content: text,
+          type: "goal",
+          source: "manual",
+          importance: 0.9,
+          tags: ["goal"],
+        });
+        ctx.reply(`Goal set: "${text}"\n\nI'll track this and remind you in briefings.`);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        ctx.reply(`Failed to store goal: ${msg}`);
+      }
+    });
+
+    // /goals — List active goals
+    this.bot.command("goals", async (ctx) => {
+      try {
+        const result = await this.memoryService.listFiltered({ type: "goal", limit: 10 });
+        const goals = result.memories;
+
+        if (goals.length === 0) {
+          return ctx.reply("No goals set yet.\n\nUse /goal <text> to set one.\nExample: /goal Ship the jewelry platform by March 24");
+        }
+
+        const lines = goals.map((g, i) => {
+          const age = formatAge(g.createdAt);
+          return `${i + 1}. ${g.content}\n   (set ${age})`;
+        });
+
+        ctx.reply(`Your Goals:\n\n${lines.join("\n\n")}\n\nSet a new goal: /goal <text>`);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        ctx.reply(`Failed to load goals: ${msg}`);
+      }
+    });
+
     // /status — System status
     this.bot.command("status", (ctx) => {
       const bridgeRunning = "isRunning" in this.bridge ? (this.bridge as Bridge).isRunning : false;

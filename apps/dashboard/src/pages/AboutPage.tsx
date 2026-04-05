@@ -255,8 +255,8 @@ export default function AboutPage() {
               <path d="M50 40 C62 35, 70 42, 65 52" strokeLinecap="round" opacity="0.6" />
             </svg>
           </div>
-          <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 tracking-tight">BODHI</h1>
-          <p className="text-xl md:text-2xl text-stone-400 mb-3">Personal AI companion with long-term memory</p>
+          <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight leading-tight">Every AI conversation<br />starts from zero.<br /><span className="text-amber-400">BODHI doesn't.</span></h1>
+          <p className="text-lg md:text-xl text-stone-400 mb-3 max-w-xl mx-auto">A personal AI that remembers your decisions, tracks your projects, and gets smarter every day. Self-hosted and open source.</p>
           <p className="text-sm text-stone-500 mb-10">Built by Sukhbat Sosorbaram / 21 / Ulaanbaatar, Mongolia</p>
           <div className="flex items-center justify-center gap-4">
             <a
@@ -279,17 +279,55 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* What is BODHI */}
+      {/* Who is BODHI for */}
+      <FadeIn>
+        <section className="py-16 px-6">
+          <div className="max-w-5xl mx-auto">
+            <h2 className="text-xs uppercase tracking-wider text-amber-500 mb-8 text-center">Who is BODHI for</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-stone-800/60 bg-stone-900/40 p-6">
+                <h3 className="text-lg font-semibold text-stone-100 mb-2">Builders</h3>
+                <p className="text-sm text-stone-400 leading-relaxed">Track architecture decisions across sessions. Never re-explain your stack. BODHI knows what you built last week and why.</p>
+              </div>
+              <div className="rounded-xl border border-stone-800/60 bg-stone-900/40 p-6">
+                <h3 className="text-lg font-semibold text-stone-100 mb-2">Creators</h3>
+                <p className="text-sm text-stone-400 leading-relaxed">Remember every content idea, research note, and feedback. Auto-generate build logs for your audience from real work data.</p>
+              </div>
+              <div className="rounded-xl border border-stone-800/60 bg-stone-900/40 p-6">
+                <h3 className="text-lg font-semibold text-stone-100 mb-2">Students</h3>
+                <p className="text-sm text-stone-400 leading-relaxed">An AI study partner that remembers what you've learned and surfaces it when relevant. Connections you missed become visible.</p>
+              </div>
+              <div className="rounded-xl border border-stone-800/60 bg-stone-900/40 p-6">
+                <h3 className="text-lg font-semibold text-stone-100 mb-2">Entrepreneurs</h3>
+                <p className="text-sm text-stone-400 leading-relaxed">Track meetings, decisions, contacts, and project status across tools. Morning briefings synthesize what matters today.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </FadeIn>
+
+      {/* How it works */}
       <FadeIn>
         <section className="py-16 px-6">
           <div className="max-w-3xl mx-auto">
-            <h2 className="text-xs uppercase tracking-wider text-amber-500 mb-4">What is BODHI</h2>
-            <p className="text-lg text-stone-300 leading-relaxed mb-4">
-              BODHI is a personal AI that remembers everything — conversations, decisions, patterns, and context — across every session. It connects to your Gmail, Calendar, GitHub, Vercel, Supabase, and Notion to build a complete picture of your world.
-            </p>
-            <p className="text-lg text-stone-300 leading-relaxed">
-              Unlike stateless AI assistants, BODHI accumulates knowledge over time. Morning briefings pull from memory. Conversations reference past decisions. The entity graph tracks relationships between people, projects, and ideas. It gets smarter the more you use it.
-            </p>
+            <h2 className="text-xs uppercase tracking-wider text-amber-500 mb-8 text-center">How it works</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="text-center">
+                <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-4 text-amber-400 text-lg font-bold">1</div>
+                <h3 className="text-stone-100 font-medium mb-2">Connect your tools</h3>
+                <p className="text-sm text-stone-500">Gmail, Calendar, GitHub, Notion, and more. BODHI reads your world, not just your chat.</p>
+              </div>
+              <div className="text-center">
+                <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-4 text-amber-400 text-lg font-bold">2</div>
+                <h3 className="text-stone-100 font-medium mb-2">Have conversations</h3>
+                <p className="text-sm text-stone-500">Chat via Telegram, web, or CLI. BODHI extracts facts, decisions, and patterns from every conversation automatically.</p>
+              </div>
+              <div className="text-center">
+                <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-4 text-amber-400 text-lg font-bold">3</div>
+                <h3 className="text-stone-100 font-medium mb-2">BODHI remembers</h3>
+                <p className="text-sm text-stone-500">Every session builds on the last. Morning briefings, proactive insights, and answers that reference your actual history.</p>
+              </div>
+            </div>
           </div>
         </section>
       </FadeIn>
@@ -313,12 +351,12 @@ export default function AboutPage() {
           <div className="max-w-5xl mx-auto">
             <h2 className="text-xs uppercase tracking-wider text-amber-500 mb-8 text-center">Capabilities</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <FeatureCard icon={icons.memory} title="Persistent Memory" description="Voyage AI embeddings + pgvector semantic search. Memories are extracted from every conversation — facts, decisions, patterns — and recalled by relevance." />
-              <FeatureCard icon={icons.context} title="Context Engine" description="9 context providers aggregate data from Gmail, Calendar, GitHub, Vercel, Supabase, and Notion. Every response is informed by your full digital context." />
-              <FeatureCard icon={icons.briefing} title="Proactive Briefings" description="Morning, evening, and weekly briefings delivered via Telegram. Scheduled insights synthesized from memory, calendar, and inbox — not just reactive chat." />
-              <FeatureCard icon={icons.graph} title="Entity Graph" description="Tracks people, projects, organizations, and topics linked across memories. Interactive visualization reveals hidden connections in your knowledge." />
-              <FeatureCard icon={icons.channel} title="Multi-Channel" description="Telegram bot, web dashboard with 17 pages, CLI integration via MCP server. Same brain, every interface. Conversations persist across channels." />
-              <FeatureCard icon={icons.build} title="Build in Public" description="Auto-generates content from git activity and session memories. The /post command adapts content to English (X) and Mongolian (Facebook) markets." />
+              <FeatureCard icon={icons.memory} title="Persistent Memory" description="Every conversation is mined for facts, decisions, and patterns. Stored with semantic search so relevant memories surface automatically — not keyword matching, meaning matching." />
+              <FeatureCard icon={icons.context} title="Context Engine" description="Connects to your Gmail, Calendar, GitHub, Notion, and more. Every response is informed by your real world — not just what you typed in this chat." />
+              <FeatureCard icon={icons.briefing} title="Proactive Briefings" description="Morning briefings with your calendar, inbox highlights, and patterns BODHI noticed. Delivered to Telegram on a schedule — insights that come to you." />
+              <FeatureCard icon={icons.graph} title="Entity Graph" description="Tracks people, projects, and topics across all your memories. See how ideas connect, which projects overlap, and what relationships matter most." />
+              <FeatureCard icon={icons.channel} title="Multi-Channel" description="Telegram, web dashboard, command line. Same brain everywhere. Start a conversation on your phone, continue it on your laptop." />
+              <FeatureCard icon={icons.build} title="Content Engine" description="Auto-generates build logs and social posts from your actual work. What you built this week, distilled into shareable content — no manual writing." />
             </div>
           </div>
         </section>

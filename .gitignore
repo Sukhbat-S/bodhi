@@ -22,3 +22,4 @@ branding/
 logs/
 .vercel/
 .cache/
+*.tsbuildinfo

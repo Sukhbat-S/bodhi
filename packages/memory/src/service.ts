@@ -10,7 +10,7 @@ import { embed, embedSingle, DIMENSIONS } from "./embedding.js";
 
 export interface MemoryInput {
   content: string;
-  type?: "fact" | "decision" | "pattern" | "preference" | "event";
+  type?: "fact" | "decision" | "pattern" | "preference" | "event" | "goal";
   source?: "conversation" | "manual" | "extraction" | "synthesis";
   sourceThreadId?: string;
   importance?: number;

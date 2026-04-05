@@ -61,10 +61,10 @@ server.tool(
   {
     content: z.string().describe("The memory to store (be specific and self-contained)"),
     type: z
-      .enum(["fact", "decision", "pattern", "preference", "event"])
+      .enum(["fact", "decision", "pattern", "preference", "event", "goal"])
       .optional()
       .default("fact")
-      .describe("Memory type: fact, decision, pattern, preference, or event"),
+      .describe("Memory type: fact, decision, pattern, preference, event, or goal"),
     importance: z
       .number()
       .min(0)

@@ -7,6 +7,7 @@ const TYPE_COLORS: Record<string, string> = {
   pattern: "bg-violet-500/10 text-violet-400",
   preference: "bg-amber-500/10 text-amber-400",
   event: "bg-rose-500/10 text-rose-400",
+  goal: "bg-cyan-500/10 text-cyan-400",
 };
 
 function formatAge(dateStr: string): string {
@@ -23,7 +24,7 @@ function formatAge(dateStr: string): string {
   return `${Math.floor(diffD / 30)}mo ago`;
 }
 
-const MEMORY_TYPES = ["fact", "decision", "pattern", "preference", "event"] as const;
+const MEMORY_TYPES = ["fact", "decision", "pattern", "preference", "event", "goal"] as const;
 
 const EXAMPLE_QUERIES = [
   "deployment patterns",

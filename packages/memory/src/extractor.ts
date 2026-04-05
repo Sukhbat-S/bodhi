@@ -21,14 +21,16 @@ Rules:
 - Do NOT extract generic concepts ("AI", "code", "database") as entities — only specific named things
 
 Return a JSON object with:
-- memories: array of {content: string, type: "fact"|"decision"|"pattern"|"preference"|"event", importance: 0.1-1.0}
+- memories: array of {content: string, type: "fact"|"decision"|"pattern"|"preference"|"event"|"goal", importance: 0.1-1.0}
 - entities: array of {name: "canonical name", type: "person"|"project"|"topic"|"organization"|"place"}
 
-Example: {"memories": [{"content": "Sukhbat decided to pause Blink Studio", "type": "decision", "importance": 0.9}], "entities": [{"name": "Blink Studio", "type": "project"}]}
+IMPORTANT: When the user states an intention, aspiration, or target ("I want to...", "My goal is...", "I'm trying to...", "I need to..."), extract it as type "goal" with high importance (0.8-0.9). Goals are the soul of BODHI — they drive everything.
+
+Example: {"memories": [{"content": "Sukhbat decided to pause Blink Studio", "type": "decision", "importance": 0.9}, {"content": "Sukhbat wants to launch BODHI on Hacker News this week", "type": "goal", "importance": 0.9}], "entities": [{"name": "Blink Studio", "type": "project"}]}
 
 If nothing worth remembering: {"memories": [], "entities": []}`;
 
-const EXTRACTION_PROMPT = `You are a memory extraction system. Analyze this conversation exchange and extract key facts, decisions, preferences, patterns, or events worth remembering about the user.
+const EXTRACTION_PROMPT = `You are a memory extraction system. Analyze this conversation exchange and extract key facts, decisions, preferences, patterns, goals, or events worth remembering about the user.
 
 Rules:
 - Only extract genuinely memorable information (not small talk or filler)
@@ -37,15 +39,16 @@ Rules:
 - Capture decisions and their reasoning
 - Capture preferences, habits, and patterns
 - Capture important dates, deadlines, and events
+- Capture GOALS — when someone says they want to achieve something, learn something, build something, or reach a milestone, extract it as type "goal"
 - Capture emotional states or concerns only if significant
 - Also extract named entities: specific people, projects, organizations, topics, or places mentioned
 - Do NOT extract generic concepts ("AI", "code", "database") as entities — only specific named things
 
 Return a JSON object with:
-- memories: array of {content: string, type: "fact"|"decision"|"pattern"|"preference"|"event", importance: 0.1-1.0}
+- memories: array of {content: string, type: "fact"|"decision"|"pattern"|"preference"|"event"|"goal", importance: 0.1-1.0}
 - entities: array of {name: "canonical name", type: "person"|"project"|"topic"|"organization"|"place"}
 
-Example: {"memories": [{"content": "Sukhbat decided to use Voyage AI for embeddings", "type": "decision", "importance": 0.7}], "entities": [{"name": "Voyage AI", "type": "organization"}]}
+Example: {"memories": [{"content": "Sukhbat decided to use Voyage AI for embeddings", "type": "decision", "importance": 0.7}, {"content": "Sukhbat wants to get 500 followers on X within 3 months", "type": "goal", "importance": 0.8}], "entities": [{"name": "Voyage AI", "type": "organization"}]}
 
 If nothing worth remembering: {"memories": [], "entities": []}`;
 
@@ -54,7 +57,8 @@ const JOURNAL_EXTRACTION_PROMPT = `You are a personal journal memory extraction 
 Rules:
 - Focus on feelings, reflections, goals, intentions, and personal observations
 - Capture what the person is thinking about, worrying about, or excited about
-- Extract any commitments, plans, or decisions mentioned
+- Extract any commitments, plans, or decisions mentioned — especially GOALS and aspirations
+- When someone expresses a desire, intention, or target, extract it as type "goal"
 - Capture relationships and interactions mentioned (who they talked to, about what)
 - Write each memory as a warm, personal statement (not clinical or technical)
 - Aim for 2-6 quality memories — don't force extraction from simple entries
@@ -62,10 +66,10 @@ Rules:
 - Also extract named entities: specific people, projects, organizations, topics, or places mentioned
 
 Return a JSON object with:
-- memories: array of {content: string, type: "fact"|"decision"|"pattern"|"preference"|"event", importance: 0.3-1.0}
+- memories: array of {content: string, type: "fact"|"decision"|"pattern"|"preference"|"event"|"goal", importance: 0.3-1.0}
 - entities: array of {name: "canonical name", type: "person"|"project"|"topic"|"organization"|"place"}
 
-Example: {"memories": [{"content": "Sukhbat is feeling good about the jewelry platform launch", "type": "fact", "importance": 0.6}], "entities": [{"name": "Jewelry Platform", "type": "project"}]}
+Example: {"memories": [{"content": "Sukhbat is feeling good about the jewelry platform launch", "type": "fact", "importance": 0.6}, {"content": "Sukhbat wants to record his first YouTube video this month", "type": "goal", "importance": 0.8}], "entities": [{"name": "Jewelry Platform", "type": "project"}]}
 
 If nothing worth remembering: {"memories": [], "entities": []}`;
 

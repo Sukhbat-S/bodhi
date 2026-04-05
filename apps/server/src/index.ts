@@ -400,6 +400,20 @@ async function main() {
 
     // Retrieve relevant context
     const context = await contextEngine.gather(body.message);
+
+    // Onboarding: if this is a new user with very few memories, inject warmth
+    if (history.length === 0) {
+      const stats = await memoryService.getStats().catch(() => ({ totalMemories: 999 }));
+      if (stats.totalMemories < 5) {
+        context.fragments.unshift({
+          provider: "onboarding",
+          content: `This is a NEW user with almost no memories yet. This may be their first conversation with BODHI. Be warm and curious — ask what they're working on, what matters to them right now, and what they'd like BODHI to remember. Make the first interaction feel like meeting a thoughtful friend, not a tool. Don't overwhelm with features. Just be present and learn about them.`,
+          tokenEstimate: 80,
+          relevance: 1,
+        });
+      }
+    }
+
     const response = await agent.chat(body.message, context, history);
 
     // Persist turns
@@ -691,6 +705,19 @@ async function main() {
     }
 
     const context = await contextEngine.gather(body.message);
+
+    // Onboarding: warmth for new users
+    if (history.length === 0) {
+      const stats = await memoryService.getStats().catch(() => ({ totalMemories: 999 }));
+      if (stats.totalMemories < 5) {
+        context.fragments.unshift({
+          provider: "onboarding",
+          content: `This is a NEW user with almost no memories yet. This may be their first conversation with BODHI. Be warm and curious — ask what they're working on, what matters to them right now, and what they'd like BODHI to remember. Make the first interaction feel like meeting a thoughtful friend, not a tool. Don't overwhelm with features. Just be present and learn about them.`,
+          tokenEstimate: 80,
+          relevance: 1,
+        });
+      }
+    }
 
     return streamSSE(c, async (stream) => {
       // Send threadId as the first event so the client can track it

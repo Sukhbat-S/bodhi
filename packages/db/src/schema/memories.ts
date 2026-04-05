@@ -20,6 +20,7 @@ export const memoryTypeEnum = pgEnum("memory_type", [
   "pattern",
   "preference",
   "event",
+  "goal",
 ]);
 
 export const memorySourceEnum = pgEnum("memory_source", [

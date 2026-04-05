@@ -18,8 +18,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(__dirname, "../../../.env");
 dotenv.config({ path: envPath });
 
-import { Agent, ContextEngine, type ConversationMessage } from "@seneca/core";
+import { Agent, ContextEngine, type AIBackend, type ConversationMessage } from "@seneca/core";
 import { Bridge } from "@seneca/bridge";
+import { AnthropicBackend } from "@seneca/anthropic";
 import { getDb } from "@seneca/db";
 import { sql } from "drizzle-orm";
 import { MemoryService, MemoryExtractor, MemoryContextProvider, MemorySynthesizer, InsightGenerator, EntityService, EntityBackfill, EntityContextProvider } from "@seneca/memory";
@@ -66,9 +67,15 @@ async function main() {
     process.exit(1);
   }
 
-  // 3. Initialize Bridge (Claude Code CLI — powers ALL reasoning via Max subscription)
-  const bridge = new Bridge();
-  console.log("  Bridge: initialized (Claude Code CLI)");
+  // 3. Initialize AI Backend — Bridge (Claude Code CLI) or Anthropic API
+  let backend: AIBackend;
+  if (config.ANTHROPIC_API_KEY) {
+    backend = new AnthropicBackend(config.ANTHROPIC_API_KEY);
+    console.log("  Backend: Anthropic API (direct)");
+  } else {
+    backend = new Bridge();
+    console.log("  Backend: Bridge (Claude Code CLI via Max subscription)");
+  }
 
   // 4. Initialize Database
   const db = getDb(config.DATABASE_URL);
@@ -91,10 +98,10 @@ async function main() {
   // 5. Initialize Memory System
   const memoryService = new MemoryService(db, config.VOYAGE_API_KEY);
   const entityService = new EntityService(db);
-  const entityBackfill = new EntityBackfill(db, bridge, entityService);
-  const memoryExtractor = new MemoryExtractor(memoryService, bridge, entityService);
+  const entityBackfill = new EntityBackfill(db, backend, entityService);
+  const memoryExtractor = new MemoryExtractor(memoryService, backend, entityService);
   const memoryProvider = new MemoryContextProvider(memoryService);
-  const memorySynthesizer = new MemorySynthesizer(memoryService, bridge);
+  const memorySynthesizer = new MemorySynthesizer(memoryService, backend);
   const insightGenerator = new InsightGenerator(memoryService);
   console.log("  Memory: initialized (Voyage AI embeddings + entities + synthesizer + insights)");
 
@@ -271,16 +278,16 @@ async function main() {
       maxIterations: 10,
       contextBudgetTokens: 8000,
     },
-    bridge
+    backend
   );
-  console.log("  Agent: initialized (via Bridge → Max subscription)");
+  console.log(`  Agent: initialized (via ${config.ANTHROPIC_API_KEY ? "Anthropic API" : "Bridge → Max subscription"})`);
 
   // 9. Initialize Telegram Bot
   const telegramBot = new TelegramBot({
     token: config.TELEGRAM_BOT_TOKEN,
     allowedUserId: config.TELEGRAM_ALLOWED_USER_ID,
     agent,
-    bridge,
+    bridge: backend,
     contextEngine,
     memoryService,
     memoryExtractor,
@@ -352,7 +359,7 @@ async function main() {
         status: "online",
         version: "0.3.0",
         uptime: process.uptime(),
-        bridgeRunning: bridge.isRunning,
+        bridgeRunning: "isRunning" in backend ? (backend as Bridge).isRunning : false,
         memory: true,
       });
     });
@@ -431,7 +438,7 @@ async function main() {
       return c.json({ error: "prompt is required" }, 400);
     }
 
-    const task = await bridge.execute(body.prompt, {
+    const task = await backend.execute(body.prompt, {
       cwd: body.cwd || config.BODHI_PROJECT_DIR || process.cwd(),
       maxTurns: body.maxTurns,
       maxBudgetUsd: body.maxBudgetUsd,
@@ -1506,7 +1513,7 @@ Return ONLY valid JSON:
   app.get("/api/status", (c) => {
     return c.json({
       agent: "online",
-      bridge: bridge.isRunning ? "running" : "idle",
+      bridge: config.ANTHROPIC_API_KEY ? "api" : ("isRunning" in backend ? ((backend as Bridge).isRunning ? "running" : "idle") : "idle"),
       memory: "active",
       notion: notionService ? "connected" : "not configured",
       github: githubService ? "connected" : "not configured",

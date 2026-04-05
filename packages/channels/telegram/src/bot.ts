@@ -8,7 +8,7 @@ import { message } from "telegraf/filters";
 import { writeFile, unlink, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import Groq from "groq-sdk";
-import type { Agent, ContextEngine } from "@seneca/core";
+import type { Agent, ContextEngine, AIBackend } from "@seneca/core";
 import {
   Bridge,
   resolveProject,
@@ -59,7 +59,7 @@ interface BotConfig {
   token: string;
   allowedUserId: string;
   agent: Agent;
-  bridge: Bridge;
+  bridge: AIBackend;
   contextEngine: ContextEngine;
   memoryService: MemoryService;
   memoryExtractor: MemoryExtractor;
@@ -72,7 +72,7 @@ interface BotConfig {
 export class TelegramBot {
   private bot: Telegraf;
   private agent: Agent;
-  private bridge: Bridge;
+  private bridge: AIBackend;
   private allowedUserId: string;
   private contextEngine: ContextEngine;
   private memoryService: MemoryService;
@@ -240,7 +240,7 @@ export class TelegramBot {
       };
 
       // Execute the task
-      const task = await this.bridge.execute(prompt, options, onProgress);
+      const task = await this.bridge.execute(prompt, options, onProgress as (update: { type: string; content: string }) => void);
 
       // Send final result
       const resultText = task.result || task.error || "No output.";
@@ -364,7 +364,7 @@ export class TelegramBot {
 
     // /status — System status
     this.bot.command("status", (ctx) => {
-      const bridgeRunning = this.bridge.isRunning;
+      const bridgeRunning = "isRunning" in this.bridge ? (this.bridge as Bridge).isRunning : false;
       ctx.reply(
         `BODHI Status\n\n` +
           `Agent: online\n` +

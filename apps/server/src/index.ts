@@ -925,10 +925,13 @@ async function main() {
         }),
       });
 
-      // Send to Telegram (non-blocking)
-      const lastStep = result.steps[result.steps.length - 1];
-      if (lastStep && !lastStep.skipped && result.status === "completed") {
-        telegramBot.sendProactiveMessage(lastStep.output).catch(() => {});
+      // Send briefing to Telegram (skip raw JSON steps)
+      if (result.status === "completed") {
+        const briefingStep = result.steps.find((s) => s.stepName === "generate-briefing");
+        const sendStep = briefingStep || result.steps.filter((s) => !s.skipped && !s.output.startsWith("[{")).pop();
+        if (sendStep) {
+          telegramBot.sendProactiveMessage(sendStep.output).catch(() => {});
+        }
       }
     });
   });

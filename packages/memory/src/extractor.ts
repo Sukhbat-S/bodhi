@@ -128,7 +128,7 @@ Assistant response: ${assistantResponse}`;
           source: "extraction",
           sourceThreadId: threadId,
           importance: memory.importance,
-          status: "pending",
+          status: "confirmed",
         });
         storedIds.push(id);
       }
@@ -203,7 +203,7 @@ ${transcript.slice(0, 8000)}`; // Cap at 8k chars to avoid huge prompts
           source: "extraction",
           importance: memory.importance,
           tags: ["telegram-session", "auto-session-save"],
-          status: "pending",
+          status: "confirmed",
         });
         storedIds.push(id);
       }
@@ -258,7 +258,7 @@ ${transcript.slice(0, 6000)}`;
           source: "manual",
           importance: memory.importance,
           tags: ["journal", "voice-journal"],
-          status: "pending",
+          status: "confirmed",
         });
         storedIds.push(id);
       }

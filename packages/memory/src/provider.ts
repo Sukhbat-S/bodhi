@@ -99,6 +99,7 @@ export class MemoryContextProvider implements ContextProvider {
       content,
       tokenEstimate,
       relevance: 0.9,
+      metadata: { memoryIds: combined.map((m) => m.id) },
     };
   }
 

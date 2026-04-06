@@ -426,6 +426,12 @@ async function main() {
 
     const response = await agent.chat(body.message, context, history);
 
+    // Build compact context snapshot for feedback-synthesis tracing
+    const snapshot = {
+      memoryIds: context.fragments.flatMap((f) => f.metadata?.memoryIds ?? []),
+      providers: context.fragments.map((f) => f.provider),
+    };
+
     // Persist turns
     await conversationService.addTurn(threadId, { role: "user", content: body.message, channel: "web" });
     await conversationService.addTurn(threadId, {
@@ -434,6 +440,7 @@ async function main() {
       channel: "web",
       modelUsed: response.model,
       durationMs: response.durationMs,
+      contextSnapshot: snapshot,
     });
     await conversationService.touchThread(threadId);
 
@@ -785,6 +792,11 @@ async function main() {
       });
 
       // Persist turns (don't block SSE close)
+      const streamSnapshot = {
+        memoryIds: context.fragments.flatMap((f) => f.metadata?.memoryIds ?? []),
+        providers: context.fragments.map((f) => f.provider),
+      };
+
       conversationService.addTurn(threadId!, { role: "user", content: body.message, channel: "web" }).catch(() => {});
       conversationService.addTurn(threadId!, {
         role: "assistant",
@@ -792,6 +804,7 @@ async function main() {
         channel: "web",
         modelUsed: response.model,
         durationMs: response.durationMs,
+        contextSnapshot: streamSnapshot,
       }).catch(() => {});
       conversationService.touchThread(threadId!).catch(() => {});
 
@@ -856,7 +869,7 @@ async function main() {
 
   app.post("/api/scheduler/trigger", async (c) => {
     const body = await c.req.json<{ type: string; workflowId?: string }>();
-    const validTypes = ["morning", "evening", "weekly", "synthesis", "inbox-triage", "workflow"];
+    const validTypes = ["morning", "evening", "weekly", "synthesis", "inbox-triage", "workflow", "persona-refresh"];
     if (!body.type || !validTypes.includes(body.type)) {
       return c.json({ error: `type must be one of: ${validTypes.join(", ")}` }, 400);
     }

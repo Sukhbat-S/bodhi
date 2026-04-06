@@ -71,6 +71,7 @@ export class ConversationService {
       channel: Channel;
       modelUsed?: string;
       durationMs?: number;
+      contextSnapshot?: Record<string, unknown>;
     }
   ): Promise<void> {
     await this.db
@@ -82,6 +83,7 @@ export class ConversationService {
         channel: turn.channel,
         modelUsed: turn.modelUsed,
         durationMs: turn.durationMs,
+        contextSnapshot: turn.contextSnapshot,
       });
   }
 

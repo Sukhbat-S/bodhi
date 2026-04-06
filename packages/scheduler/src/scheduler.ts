@@ -13,7 +13,7 @@ import type { MemorySynthesizer } from "@seneca/memory";
 import type { InsightGenerator, Insight } from "@seneca/memory";
 
 export type BriefingType = "morning" | "evening" | "weekly";
-export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest" | "workflow";
+export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest" | "workflow" | "persona-refresh";
 
 interface TelegramSender {
   sendProactiveMessage(text: string): Promise<void>;
@@ -304,6 +304,9 @@ export class Scheduler {
     if (type === "workflow") {
       return { status: "error", error: "workflowId required" };
     }
+    if (type === "persona-refresh") {
+      return this.triggerPersonaRefresh();
+    }
     return this.runBriefing(type);
   }
 
@@ -388,6 +391,15 @@ export class Scheduler {
    * Auto-refresh the "Right Now" section in the persona file.
    * Runs daily at 23:00 — summarizes today's activity from memories.
    */
+  private async triggerPersonaRefresh(): Promise<{ status: string; content?: string; error?: string }> {
+    try {
+      await this.refreshPersona();
+      return { status: "sent", content: "Persona 'Right Now' section refreshed" };
+    } catch (err) {
+      return { status: "error", error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   private async refreshPersona(): Promise<void> {
     if (!this.config.personaPath) return;
 

@@ -75,6 +75,7 @@ export interface ContextFragment {
   content: string;
   tokenEstimate: number;
   relevance: number; // 0-1
+  metadata?: { memoryIds?: string[] };
 }
 
 export interface ContextProvider {

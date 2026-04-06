@@ -1,5 +1,9 @@
 {
+  "redirects": [
+    { "source": "/", "destination": "/about", "statusCode": 302 },
+    { "source": "/index.html", "destination": "/about", "statusCode": 302 }
+  ],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/about", "destination": "/index.html" }
   ]
 }

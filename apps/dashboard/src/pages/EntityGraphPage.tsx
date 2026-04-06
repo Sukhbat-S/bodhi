@@ -47,8 +47,19 @@ interface EntityDetail extends EntityData {
   relatedEntities: Array<EntityData & { sharedMemoryCount: number }>;
 }
 
-// ---- Color Schemes ----
+// ---- Constellation Color Schemes ----
 
+const typeGlow: Record<string, { solid: string; rgb: string; minimap: string }> = {
+  person:       { solid: '#8b5cf6', rgb: '139,92,246',  minimap: 'rgba(139,92,246,0.6)' },
+  project:      { solid: '#10b981', rgb: '16,185,129',  minimap: 'rgba(16,185,129,0.6)' },
+  topic:        { solid: '#f59e0b', rgb: '245,158,11',  minimap: 'rgba(245,158,11,0.6)' },
+  organization: { solid: '#0ea5e9', rgb: '14,165,233',  minimap: 'rgba(14,165,233,0.6)' },
+  place:        { solid: '#f43f5e', rgb: '244,63,94',   minimap: 'rgba(244,63,94,0.6)' },
+};
+
+const fallbackGlow = typeGlow.topic;
+
+// Legacy compat for detail panel
 const typeColors: Record<string, { bg: string; border: string; text: string; dot: string; minimap: string }> = {
   person: { bg: 'bg-violet-950/60', border: 'border-violet-700/40', text: 'text-violet-100', dot: 'bg-violet-400', minimap: 'rgba(139,92,246,0.6)' },
   project: { bg: 'bg-emerald-950/60', border: 'border-emerald-700/40', text: 'text-emerald-100', dot: 'bg-emerald-400', minimap: 'rgba(52,211,153,0.6)' },
@@ -59,30 +70,101 @@ const typeColors: Record<string, { bg: string; border: string; text: string; dot
 
 const fallbackColor = typeColors.topic;
 
-// ---- Entity Node Component ----
+// ---- Constellation Node Component ----
 
 function EntityNode({ data }: NodeProps) {
-  const d = data as unknown as { label: string; entityType: string; mentionCount: number; selected: boolean };
-  const colors = typeColors[d.entityType] || fallbackColor;
-  const size = Math.max(140, Math.min(200, 140 + d.mentionCount * 3));
+  const d = data as unknown as {
+    label: string;
+    entityType: string;
+    mentionCount: number;
+    selected: boolean;
+    dimmed: boolean;
+    highlighted: boolean;
+    hovered: boolean;
+  };
+
+  const glow = typeGlow[d.entityType] || fallbackGlow;
+  const size = Math.max(10, Math.min(36, 10 + d.mentionCount * 1.5));
+  const intensity = d.selected ? 1.2 : 0.6;
+  const scale = 1;
 
   return (
     <div
-      className={`${colors.bg} ${colors.border} border rounded-xl px-3 py-2 backdrop-blur-sm transition-all duration-200 hover:brightness-110 ${d.selected ? 'ring-2 ring-amber-500/60' : ''}`}
-      style={{ minWidth: size }}
+      className="relative flex items-center justify-center"
+      data-entity-id={d.label}
+      style={{
+        width: size * 3,
+        height: size * 3,
+        transition: 'opacity 200ms ease-out, transform 200ms ease-out',
+      }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-stone-500 !w-1.5 !h-1.5 !border-0 !opacity-0" />
-      <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full ${colors.dot} shrink-0`} />
-        <span className={`text-sm font-semibold ${colors.text} truncate`}>{d.label}</span>
+      <Handle type="target" position={Position.Top} className="!bg-transparent !w-0 !h-0 !border-0 !min-w-0 !min-h-0" />
+
+      {/* Outer glow */}
+      <div
+        style={{
+          position: 'absolute',
+          width: size * 2.5,
+          height: size * 2.5,
+          borderRadius: '50%',
+          background: `radial-gradient(circle, rgba(${glow.rgb},${intensity * 0.15}) 0%, transparent 70%)`,
+          transition: 'all 250ms ease-out',
+        }}
+      />
+
+      {/* Core orb */}
+      <div
+        className={d.mentionCount > 8 ? 'animate-glow-pulse' : ''}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          background: glow.solid,
+          boxShadow: [
+            `0 0 ${size * 0.5}px rgba(${glow.rgb},${intensity * 0.8})`,
+            `0 0 ${size}px rgba(${glow.rgb},${intensity * 0.5})`,
+            `0 0 ${size * 2}px rgba(${glow.rgb},${intensity * 0.25})`,
+          ].join(','),
+          transition: 'all 250ms ease-out',
+        }}
+      />
+
+      {/* Selected ring */}
+      {d.selected && (
+        <div
+          className="absolute animate-spin-slow"
+          style={{
+            width: size + 12,
+            height: size + 12,
+            borderRadius: '50%',
+            border: '1.5px solid rgba(251,191,36,0.5)',
+            borderTopColor: 'transparent',
+          }}
+        />
+      )}
+
+      {/* Label — hidden by default, shown via CSS :hover */}
+      <div
+        className="constellation-label absolute whitespace-nowrap pointer-events-none"
+        style={{
+          top: size * 1.5 + 4,
+          left: '50%',
+          transform: 'translateX(-50%)',
+        }}
+      >
+        <span
+          className="text-[11px] font-medium px-1.5 py-0.5 rounded"
+          style={{
+            color: glow.solid,
+            textShadow: `0 0 8px rgba(${glow.rgb},0.6), 0 0 16px rgba(${glow.rgb},0.3)`,
+            background: 'rgba(10,10,10,0.8)',
+          }}
+        >
+          {d.label}
+        </span>
       </div>
-      <div className="flex items-center gap-2 mt-1">
-        <span className="text-[10px] text-stone-500 uppercase tracking-wider">{d.entityType}</span>
-        {d.mentionCount > 0 && (
-          <span className="text-[10px] text-stone-400">{d.mentionCount} mentions</span>
-        )}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-stone-500 !w-1.5 !h-1.5 !border-0 !opacity-0" />
+
+      <Handle type="source" position={Position.Bottom} className="!bg-transparent !w-0 !h-0 !border-0 !min-w-0 !min-h-0" />
     </div>
   );
 }
@@ -122,20 +204,20 @@ function useForceLayout(
       .map(e => ({ source: e.source as string, target: e.target as string }));
 
     const sim = forceSimulation<SimNode>(simNodes)
-      .force('charge', forceManyBody<SimNode>().strength(-300))
+      .force('charge', forceManyBody<SimNode>().strength(-80))
       .force(
         'link',
         forceLink<SimNode, SimulationLinkDatum<SimNode>>(simLinks)
           .id(d => d.id)
-          .distance(180)
-          .strength(0.5),
+          .distance(60)
+          .strength(0.8),
       )
-      .force('center', forceCenter(0, 0).strength(0.05))
-      .force('collide', forceCollide<SimNode>().radius(80).strength(0.7))
-      .force('x', forceX<SimNode>(0).strength(0.03))
-      .force('y', forceY<SimNode>(0).strength(0.03))
-      .alphaDecay(0.015)
-      .velocityDecay(0.3)
+      .force('center', forceCenter(0, 0).strength(0.1))
+      .force('collide', forceCollide<SimNode>().radius(20).strength(0.6))
+      .force('x', forceX<SimNode>(0).strength(0.05))
+      .force('y', forceY<SimNode>(0).strength(0.05))
+      .alphaDecay(0.02)
+      .velocityDecay(0.4)
       .on('tick', () => {
         setNodes(prev =>
           prev.map(node => {
@@ -264,12 +346,14 @@ function EntityGraphInner({
   setNodes,
   simulationRunning,
   onNodeClick,
+  onNodeHover,
 }: {
   nodes: Node[];
   edges: Edge[];
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
   simulationRunning: boolean;
   onNodeClick: (nodeId: string) => void;
+  onNodeHover: (nodeId: string | null) => void;
 }) {
   const { fitView } = useReactFlow();
   const { onNodeDragStart, onNodeDrag, onNodeDragStop } = useForceLayout(nodes, edges, setNodes, simulationRunning);
@@ -293,15 +377,17 @@ function EntityGraphInner({
       onNodeDrag={onNodeDrag}
       onNodeDragStop={onNodeDragStop}
       onNodeClick={(_, node) => onNodeClick(node.id)}
+      onNodeMouseEnter={(_, node) => onNodeHover(node.id)}
+      onNodeMouseLeave={() => onNodeHover(null)}
       onInit={onInit}
       fitView
       fitViewOptions={{ padding: 0.15 }}
       panOnScroll
-      minZoom={0.2}
-      maxZoom={2}
+      minZoom={0.1}
+      maxZoom={3}
       proOptions={{ hideAttribution: true }}
+      style={{ background: '#0a0a0a' }}
     >
-      <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgba(120,113,108,0.15)" />
       <Controls
         showInteractive={false}
         className="!bg-stone-800/90 !border-stone-700 !rounded-lg !shadow-lg [&>button]:!bg-stone-800 [&>button]:!border-stone-700 [&>button]:!text-stone-300 [&>button:hover]:!bg-stone-700"
@@ -309,10 +395,10 @@ function EntityGraphInner({
       <MiniMap
         nodeColor={(node) => {
           const t = (node.data as Record<string, unknown>)?.entityType as string;
-          return typeColors[t]?.minimap || 'rgba(120,113,108,0.6)';
+          return typeGlow[t]?.minimap || 'rgba(120,113,108,0.6)';
         }}
-        maskColor="rgba(12,10,9,0.85)"
-        className="!bg-stone-900/90 !border-stone-700 !rounded-lg"
+        maskColor="rgba(10,10,10,0.9)"
+        className="!bg-stone-950/95 !border-stone-800 !rounded-lg"
       />
     </ReactFlow>
   );
@@ -326,8 +412,22 @@ export default function EntityGraphPage() {
   const [loading, setLoading] = useState(true);
   const [simulationRunning, setSimulationRunning] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const hoveredIdRef = useRef<string | null>(null);
   const [detail, setDetail] = useState<EntityDetail | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+
+  // Pre-compute adjacency map once (not on every hover)
+  const adjacencyMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const e of graphData.edges) {
+      if (!map.has(e.sourceId)) map.set(e.sourceId, new Set());
+      if (!map.has(e.targetId)) map.set(e.targetId, new Set());
+      map.get(e.sourceId)!.add(e.targetId);
+      map.get(e.targetId)!.add(e.sourceId);
+    }
+    return map;
+  }, [graphData.edges]);
 
   // Fetch graph data
   const loadGraph = useCallback(async () => {
@@ -365,37 +465,62 @@ export default function EntityGraphPage() {
   useEffect(() => {
     // Spread nodes in a circle initially
     const count = filteredData.nodes.length;
-    const radius = Math.max(200, count * 15);
+    // Connected nodes start near center, disconnected scatter outward
+    const connectedIds = new Set<string>();
+    for (const e of filteredData.edges) {
+      connectedIds.add(e.sourceId);
+      connectedIds.add(e.targetId);
+    }
+
     setRfNodes(
-      filteredData.nodes.map((entity, i) => ({
+      filteredData.nodes.map((entity) => {
+        const isConnected = connectedIds.has(entity.id);
+        const spread = isConnected ? 300 : 800;
+        return {
         id: entity.id,
         type: 'entity',
         position: {
-          x: Math.cos((2 * Math.PI * i) / count) * radius,
-          y: Math.sin((2 * Math.PI * i) / count) * radius,
+          x: (Math.random() - 0.5) * spread,
+          y: (Math.random() - 0.5) * spread,
         },
         data: {
           label: entity.name,
           entityType: entity.type,
           mentionCount: entity.mentionCount,
           selected: entity.id === selectedId,
+          hovered: false,
+          highlighted: false,
+          dimmed: false,
         },
-      })),
+      };
+      }),
     );
   }, [filteredData.nodes, selectedId]);
 
   const rfEdges = useMemo<Edge[]>(() =>
-    filteredData.edges.map((e) => ({
-      id: `${e.sourceId}-${e.targetId}`,
-      source: e.sourceId,
-      target: e.targetId,
-      style: {
-        stroke: 'rgba(120,113,108,0.3)',
-        strokeWidth: Math.min(3, e.sharedMemoryCount),
-      },
-      animated: e.sharedMemoryCount >= 3,
-    })),
-  [filteredData.edges]);
+    filteredData.edges.map((e) => {
+      const isHighlighted = hoveredId &&
+        (e.sourceId === hoveredId || e.targetId === hoveredId);
+      const sourceType = graphData.nodes.find(n => n.id === e.sourceId)?.type;
+      const glow = typeGlow[sourceType || 'topic'] || fallbackGlow;
+
+      return {
+        id: `${e.sourceId}-${e.targetId}`,
+        source: e.sourceId,
+        target: e.targetId,
+        style: {
+          stroke: isHighlighted
+            ? `rgba(${glow.rgb},0.5)`
+            : hoveredId
+            ? 'rgba(255,255,255,0.02)'
+            : 'rgba(255,255,255,0.06)',
+          strokeWidth: isHighlighted ? Math.min(3, e.sharedMemoryCount) + 1 : Math.min(2, e.sharedMemoryCount * 0.5),
+          transition: 'all 250ms ease-out',
+        },
+        animated: isHighlighted ? true : false,
+      };
+    }),
+  [filteredData.edges, hoveredId, graphData.nodes]);
 
   // Load entity detail on click
   const handleNodeClick = useCallback(async (nodeId: string) => {
@@ -414,7 +539,7 @@ export default function EntityGraphPage() {
   [stats]);
 
   return (
-    <div className="h-full flex flex-col bg-stone-950">
+    <div className="h-full flex flex-col" style={{ background: '#0a0a0a' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-stone-800/60 bg-stone-900/60 backdrop-blur-sm">
         <div className="flex items-center gap-3">
@@ -477,13 +602,20 @@ export default function EntityGraphPage() {
       {/* Graph */}
       <div className="flex-1 relative">
         <ReactFlowProvider>
-          <EntityGraphInner
-            nodes={rfNodes}
-            edges={rfEdges}
-            setNodes={setRfNodes}
-            simulationRunning={simulationRunning}
-            onNodeClick={handleNodeClick}
-          />
+          <div
+            className="w-full h-full constellation-graph"
+            data-hovered={hoveredId || ''}
+            data-connected={hoveredId ? [hoveredId, ...(adjacencyMap.get(hoveredId) || [])].join(',') : ''}
+          >
+            <EntityGraphInner
+              nodes={rfNodes}
+              edges={rfEdges}
+              setNodes={setRfNodes}
+              simulationRunning={simulationRunning}
+              onNodeClick={handleNodeClick}
+              onNodeHover={(id) => { hoveredIdRef.current = id; setHoveredId(id); }}
+            />
+          </div>
         </ReactFlowProvider>
         <DetailPanel entity={detail} onClose={() => { setDetail(null); setSelectedId(null); }} />
       </div>

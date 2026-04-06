@@ -158,7 +158,8 @@ export class Agent {
     context?: ContextSnapshot,
     onProgress?: WorkflowProgressCallback,
     resumeFromStep = 0,
-    previousOutputs: StepOutput[] = []
+    previousOutputs: StepOutput[] = [],
+    onStepDone?: (step: StepOutput) => void
   ): Promise<WorkflowResult> {
     const runId = crypto.randomUUID();
     const startTime = Date.now();
@@ -245,12 +246,14 @@ export class Agent {
       const stepStart = Date.now();
       try {
         const response = await this.chat(fullPrompt, context);
-        outputs.push({
+        const stepOutput: StepOutput = {
           stepName: step.name,
           output: response.content,
           durationMs: Date.now() - stepStart,
           skipped: false,
-        });
+        };
+        outputs.push(stepOutput);
+        onStepDone?.(stepOutput);
         console.log(`[agent] Step "${step.name}" completed (${((Date.now() - stepStart) / 1000).toFixed(1)}s)`);
       } catch (error) {
         console.error(`[agent] Step "${step.name}" failed:`, error);

@@ -610,9 +610,60 @@ export function getWorkflows() {
   return request<{ workflows: WorkflowInfo[] }>("/workflows");
 }
 
-export function triggerWorkflow(id: string) {
-  return request<{ status: string; content?: string; error?: string }>(
-    `/workflows/${id}/run`,
-    { method: "POST" }
-  );
+export interface WorkflowProgress {
+  workflowId: string;
+  runId: string;
+  currentStep: number;
+  totalSteps: number;
+  stepName: string;
+  status: "running" | "paused" | "completed" | "failed";
+}
+
+export interface WorkflowStepResult {
+  stepName: string;
+  output: string;
+  durationMs: number;
+  skipped: boolean;
+}
+
+export async function streamWorkflow(
+  workflowId: string,
+  onStart: (data: { steps: string[]; totalSteps: number }) => void,
+  onProgress: (progress: WorkflowProgress) => void,
+  onStepDone: (step: WorkflowStepResult) => void,
+  onDone: (result: { status: string; totalDurationMs: number; error?: string }) => void,
+): Promise<void> {
+  const res = await fetch(`${BASE}/workflows/${workflowId}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) throw new Error(`Workflow failed: ${res.statusText}`);
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const event = JSON.parse(line.slice(6));
+          if (event.type === "start") onStart(event);
+          else if (event.type === "progress") onProgress(event);
+          else if (event.type === "step_complete") onStepDone(event);
+          else if (event.type === "done") onDone(event);
+        } catch { /* skip */ }
+      }
+    }
+  }
 }

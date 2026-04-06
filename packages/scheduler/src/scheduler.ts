@@ -30,6 +30,7 @@ interface GmailDataSource {
 
 interface CalendarDataSource {
   getBriefingSummary(type: "morning" | "evening"): Promise<string>;
+  createEvent?(input: { summary: string; start: string; end: string; description?: string }): Promise<{ id: string }>;
 }
 
 interface GitHubDataSource {
@@ -318,13 +319,37 @@ export class Scheduler {
         }
       );
 
-      // Send final step output to Telegram
-      const lastStep = result.steps[result.steps.length - 1];
-      if (lastStep && !lastStep.skipped) {
+      // Send briefing step output to Telegram (skip the calendar JSON step)
+      const briefingStep = result.steps.find((s) => s.stepName === "generate-briefing");
+      const lastStep = briefingStep || result.steps.filter((s) => !s.skipped).pop();
+      if (lastStep) {
         try {
           await this.config.telegram.sendProactiveMessage(lastStep.output);
         } catch {
           console.error("[scheduler] Failed to send workflow result to Telegram");
+        }
+      }
+
+      // Create calendar events from the time-blocks step
+      if (workflowId === "morning-research" && this.config.calendar?.createEvent) {
+        const timeBlockStep = result.steps.find((s) => s.stepName === "create-time-blocks");
+        if (timeBlockStep && !timeBlockStep.skipped) {
+          try {
+            const match = timeBlockStep.output.match(/\[[\s\S]*\]/);
+            if (match) {
+              const events = JSON.parse(match[0]) as { summary: string; start: string; end: string; description?: string }[];
+              let created = 0;
+              for (const event of events) {
+                if (event.summary && event.start && event.end) {
+                  await this.config.calendar.createEvent(event);
+                  created++;
+                }
+              }
+              console.log(`[scheduler] Created ${created} calendar time blocks from morning workflow`);
+            }
+          } catch (err) {
+            console.error("[scheduler] Failed to create calendar events:", err instanceof Error ? err.message : err);
+          }
         }
       }
 

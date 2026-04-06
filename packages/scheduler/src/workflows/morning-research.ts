@@ -4,7 +4,7 @@ export const morningResearch: WorkflowDefinition = {
   id: "morning-research",
   name: "Morning Research Workflow",
   description:
-    "Multi-step morning briefing: gather context, analyze priorities, draft plan, generate briefing",
+    "Multi-step morning briefing: gather context, analyze priorities, draft plan, generate briefing, create calendar blocks",
   steps: [
     {
       name: "gather",
@@ -47,6 +47,19 @@ export const morningResearch: WorkflowDefinition = {
         `Raw context:\n${prev[0].output}\n\n` +
         `Analysis:\n${prev[1].output}\n\n` +
         `Plan:\n${prev[2].output}`,
+    },
+    {
+      name: "create-time-blocks",
+      prompt: (prev) =>
+        `Based on today's plan:\n\n${prev[2].output}\n\n` +
+        "Create 2-4 calendar time blocks for today's key priorities.\n" +
+        "For each block, output a JSON object with: summary, start (ISO 8601), end (ISO 8601), description.\n" +
+        `Use today's date: ${new Date().toISOString().slice(0, 10)}. ` +
+        "Working hours: 9am-8pm Asia/Ulaanbaatar (UTC+8).\n" +
+        "Make blocks realistic (1-2 hours each), with breaks between them.\n\n" +
+        'Output ONLY a JSON array of events. Example:\n' +
+        '[{"summary": "Deep work: BODHI workflows", "start": "2026-04-06T09:00:00+08:00", "end": "2026-04-06T11:00:00+08:00", "description": "Focus on workflow engine refinements"}]\n\n' +
+        "No other text, just the JSON array.",
     },
   ],
 };

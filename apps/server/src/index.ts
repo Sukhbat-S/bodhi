@@ -876,8 +876,60 @@ async function main() {
 
   app.post("/api/workflows/:id/run", async (c) => {
     const id = c.req.param("id");
-    const result = await scheduler.runWorkflow(id);
-    return c.json(result);
+    const definition = workflowRegistry.get(id);
+    if (!definition) {
+      return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    }
+
+    return streamSSE(c, async (stream) => {
+      // Send workflow metadata first
+      await stream.writeSSE({
+        data: JSON.stringify({
+          type: "start",
+          workflowId: definition.id,
+          name: definition.name,
+          steps: definition.steps.map((s) => s.name),
+          totalSteps: definition.steps.length,
+        }),
+      });
+
+      const context = await contextEngine.gather(definition.name);
+
+      const result = await agent.runWorkflow(
+        definition,
+        context,
+        // onProgress: step status updates
+        async (progress) => {
+          await stream.writeSSE({
+            data: JSON.stringify({ type: "progress", ...progress }),
+          });
+        },
+        0,
+        [],
+        // onStepDone: step completed with output
+        async (stepOutput) => {
+          await stream.writeSSE({
+            data: JSON.stringify({ type: "step_complete", ...stepOutput }),
+          });
+        }
+      );
+
+      // Send final result
+      await stream.writeSSE({
+        data: JSON.stringify({
+          type: "done",
+          status: result.status,
+          totalDurationMs: result.totalDurationMs,
+          error: result.error,
+        }),
+      });
+
+      // Send to Telegram (non-blocking)
+      const lastStep = result.steps[result.steps.length - 1];
+      if (lastStep && !lastStep.skipped && result.status === "completed") {
+        telegramBot.sendProactiveMessage(lastStep.output).catch(() => {});
+      }
+    });
   });
 
   // API: Notion

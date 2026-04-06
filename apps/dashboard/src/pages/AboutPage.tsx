@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { getStatus, type StatusResponse, type Memory } from "../api";
+import { BodhiLogo } from "../components/BodhiLogo";
 
 // --- Fade-in on scroll ---
 function FadeIn({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -245,10 +246,7 @@ export default function AboutPage() {
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "bg-stone-950/90 backdrop-blur-md border-b border-stone-800/60" : ""}`}>
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <svg className="w-6 h-6" viewBox="0 0 100 100" fill="none" stroke="#d97706" strokeWidth="4">
-              <path d="M50 10 C25 30, 15 50, 50 80 C85 50, 75 30, 50 10Z" strokeLinejoin="round" />
-              <path d="M50 25 L50 70" strokeLinecap="round" />
-            </svg>
+            <BodhiLogo className="w-6 h-6 text-amber-600" />
             <span className="font-bold text-stone-100">BODHI</span>
           </div>
           <div className="flex items-center gap-4">
@@ -263,12 +261,7 @@ export default function AboutPage() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(217,119,6,0.08)_0%,_transparent_70%)]" />
         <div className="max-w-3xl mx-auto text-center relative">
           <div className="flex justify-center mb-8">
-            <svg className="w-16 h-16" viewBox="0 0 100 100" fill="none" stroke="#d97706" strokeWidth="3">
-              <path d="M50 10 C25 30, 15 50, 50 80 C85 50, 75 30, 50 10Z" strokeLinejoin="round" />
-              <path d="M50 25 L50 70" strokeLinecap="round" />
-              <path d="M50 40 C38 35, 30 42, 35 52" strokeLinecap="round" opacity="0.6" />
-              <path d="M50 40 C62 35, 70 42, 65 52" strokeLinecap="round" opacity="0.6" />
-            </svg>
+            <BodhiLogo className="w-16 h-16 text-amber-600" />
           </div>
           <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight leading-tight">Every AI conversation<br />starts from zero.<br /><span className="text-amber-400">BODHI doesn't.</span></h1>
           <p className="text-lg md:text-xl text-stone-400 mb-3 max-w-xl mx-auto">A personal AI that remembers your decisions, tracks your projects, and gets smarter every day. Self-hosted and open source.</p>
@@ -507,10 +500,7 @@ export default function AboutPage() {
       <footer className="py-16 px-6 border-t border-stone-800/60">
         <div className="max-w-3xl mx-auto text-center">
           <div className="flex justify-center mb-4">
-            <svg className="w-8 h-8" viewBox="0 0 100 100" fill="none" stroke="#d97706" strokeWidth="3" opacity="0.5">
-              <path d="M50 10 C25 30, 15 50, 50 80 C85 50, 75 30, 50 10Z" strokeLinejoin="round" />
-              <path d="M50 25 L50 70" strokeLinecap="round" />
-            </svg>
+            <BodhiLogo className="w-8 h-8 text-amber-600" opacity={0.5} />
           </div>
           <p className="text-sm text-stone-500 mb-4">Built with obsession in Ulaanbaatar</p>
           <div className="flex justify-center gap-6">

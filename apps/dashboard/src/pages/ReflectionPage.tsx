@@ -103,16 +103,22 @@ export default function ReflectionPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.allSettled([
-      getStatus().then((s) => setOwnerName(s.ownerName || "User")),
-      getMemoryStats().then(setStats),
-      getMemoryInsights().then((r) => setInsights(r.insights)),
-      getMemoryQuality().then(setQuality),
-      searchMemories("decision", 5).then((r) => setDecisions(r.memories)),
-      getMemories({ type: "goal", limit: 10 }).then((r) => setGoals(r.memories)).catch(() => {}),
-      getCalendarToday().then((r) => setEvents(r.events)).catch(() => {}),
-      getBriefings({ limit: 1 }).then((r) => setLatestBriefing(r.briefings[0] || null)).catch(() => {}),
-    ]).finally(() => setLoading(false));
+    let cancelled = false;
+    // Fast calls — render greeting + decisions immediately (~20ms)
+    getStatus().then((s) => { if (!cancelled) { setOwnerName(s.ownerName || "User"); setLoading(false); } }).catch(() => { if (!cancelled) setLoading(false); });
+    searchMemories("decision", 5).then((r) => { if (!cancelled) setDecisions(r.memories); }).catch(() => {});
+    getBriefings({ limit: 1 }).then((r) => { if (!cancelled) setLatestBriefing(r.briefings[0] || null); }).catch(() => {});
+    getMemories({ type: "goal", limit: 10 }).then((r) => { if (!cancelled) setGoals(r.memories); }).catch(() => {});
+    // Slower calls — stagger to avoid pool saturation on rapid refreshes
+    const t1 = setTimeout(() => {
+      getCalendarToday().then((r) => { if (!cancelled) setEvents(r.events); }).catch(() => {});
+      getMemoryStats().then((s) => { if (!cancelled) setStats(s); }).catch(() => {});
+    }, 50);
+    const t2 = setTimeout(() => {
+      getMemoryQuality().then((q) => { if (!cancelled) setQuality(q); }).catch(() => {});
+      getMemoryInsights().then((r) => { if (!cancelled) setInsights(r.insights); }).catch(() => {});
+    }, 150);
+    return () => { cancelled = true; clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
   const handleQuickSubmit = async (e: React.FormEvent) => {

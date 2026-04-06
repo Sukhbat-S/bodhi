@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import NotificationToggle from "./NotificationToggle";
+import { BodhiLogo } from "./BodhiLogo";
 
 interface NavItem {
   to: string;
@@ -160,31 +161,7 @@ const icons: Record<string, ReactNode> = {
   ),
 };
 
-// Bodhi leaf logo SVG
-function BodhiLogo() {
-  return (
-    <svg className="w-7 h-7" viewBox="0 0 100 140" fill="none" stroke="#d97706" strokeWidth="3">
-      {/* Leaf */}
-      <path d="M50 15 C25 35, 15 60, 50 95 C85 60, 75 35, 50 15Z" strokeLinejoin="round" />
-      <path d="M50 30 L50 85" strokeLinecap="round" />
-      <path d="M50 50 C40 45, 30 50, 25 55" strokeLinecap="round" />
-      <path d="M50 65 C60 60, 70 65, 75 70" strokeLinecap="round" />
-      {/* Geometric roots */}
-      <circle cx="50" cy="100" r="3" fill="#d97706" />
-      <circle cx="35" cy="115" r="2.5" fill="#d97706" />
-      <circle cx="65" cy="115" r="2.5" fill="#d97706" />
-      <circle cx="25" cy="128" r="2" fill="#d97706" />
-      <circle cx="50" cy="125" r="2" fill="#d97706" />
-      <circle cx="75" cy="128" r="2" fill="#d97706" />
-      <line x1="50" y1="100" x2="35" y2="115" />
-      <line x1="50" y1="100" x2="65" y2="115" />
-      <line x1="35" y1="115" x2="25" y2="128" />
-      <line x1="35" y1="115" x2="50" y2="125" />
-      <line x1="65" y1="115" x2="50" y2="125" />
-      <line x1="65" y1="115" x2="75" y2="128" />
-    </svg>
-  );
-}
+// BodhiLogo imported from ./BodhiLogo
 
 function CollapsibleGroup({
   group,
@@ -282,7 +259,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Logo */}
         <div className="p-5 border-b border-stone-800/60">
           <h1 className="text-lg font-bold text-stone-100 tracking-wide flex items-center gap-2.5">
-            <BodhiLogo />
+            <BodhiLogo className="w-9 h-9 text-amber-600" />
             BODHI
           </h1>
           <p className="text-xs text-stone-500 mt-1">See yourself clearly.</p>

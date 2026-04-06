@@ -118,21 +118,20 @@ function EntitySphere({
         />
       </mesh>
 
-      {/* Label */}
-      {(isHovered || isConnected) && (
-        <Billboard position={[0, size + 0.8, 0]}>
-          <Text
-            fontSize={0.5}
-            color={color}
-            anchorX="center"
-            anchorY="middle"
-            outlineColor="black"
-            outlineWidth={0.05}
-          >
-            {node.name}
-          </Text>
-        </Billboard>
-      )}
+      {/* Label — always visible, brighter on hover */}
+      <Billboard position={[0, size + 0.6, 0]}>
+        <Text
+          fontSize={isHovered ? 0.55 : isConnected ? 0.45 : 0.3}
+          color={isHovered || isConnected ? color : '#a8a29e'}
+          anchorX="center"
+          anchorY="middle"
+          outlineColor="black"
+          outlineWidth={0.06}
+          fillOpacity={isDimmed ? 0.1 : isHovered ? 1 : isConnected ? 0.9 : 0.5}
+        >
+          {node.name}
+        </Text>
+      </Billboard>
     </group>
   );
 }
@@ -198,6 +197,30 @@ function ConnectionLines({
   );
 }
 
+// ---- Camera Fly-To ----
+
+function CameraFly({ target }: { target: [number, number, number] | null }) {
+  const { camera } = useThree();
+  const targetRef = useRef<THREE.Vector3 | null>(null);
+
+  useEffect(() => {
+    if (target) {
+      targetRef.current = new THREE.Vector3(target[0], target[1], target[2] + 15);
+    }
+  }, [target]);
+
+  useFrame(() => {
+    if (targetRef.current) {
+      camera.position.lerp(targetRef.current, 0.05);
+      if (camera.position.distanceTo(targetRef.current) < 0.5) {
+        targetRef.current = null;
+      }
+    }
+  });
+
+  return null;
+}
+
 // ---- Scene ----
 
 function Scene({
@@ -205,6 +228,7 @@ function Scene({
   edges,
   hoveredId,
   selectedId,
+  flyTarget,
   setHoveredId,
   onNodeClick,
 }: {
@@ -212,6 +236,7 @@ function Scene({
   edges: EntityEdge[];
   hoveredId: string | null;
   selectedId: string | null;
+  flyTarget: [number, number, number] | null;
   setHoveredId: (id: string | null) => void;
   onNodeClick: (id: string) => void;
 }) {
@@ -259,6 +284,7 @@ function Scene({
         />
       ))}
 
+      <CameraFly target={flyTarget} />
       <OrbitControls
         enableDamping
         dampingFactor={0.05}
@@ -281,7 +307,7 @@ const typeColors: Record<string, { text: string; dot: string }> = {
   place: { text: 'text-rose-100', dot: 'bg-rose-400' },
 };
 
-function DetailPanel({ entity, onClose }: { entity: EntityDetail | null; onClose: () => void }) {
+function DetailPanel({ entity, onClose, onNavigate }: { entity: EntityDetail | null; onClose: () => void; onNavigate: (id: string) => void }) {
   if (!entity) return null;
   const colors = typeColors[entity.type] || typeColors.topic;
 
@@ -308,11 +334,15 @@ function DetailPanel({ entity, onClose }: { entity: EntityDetail | null; onClose
             <h3 className="text-xs font-semibold text-stone-300 mb-2">Related Entities</h3>
             <div className="space-y-1">
               {entity.relatedEntities.map((re) => (
-                <div key={re.id} className="flex items-center gap-2 text-xs">
-                  <span className={`w-1.5 h-1.5 rounded-full ${typeColorsDot[re.type] || 'bg-amber-400'}`} />
-                  <span className="text-stone-300">{re.name}</span>
+                <button
+                  key={re.id}
+                  onClick={() => onNavigate(re.id)}
+                  className="flex items-center gap-2 text-xs w-full text-left hover:bg-stone-800/50 rounded px-1 py-0.5 -mx-1 transition-colors"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${typeColorsDot[re.type] || 'bg-amber-400'}`} />
+                  <span className="text-stone-300 hover:text-white">{re.name}</span>
                   <span className="text-stone-600">{re.sharedMemoryCount} shared</span>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -349,6 +379,7 @@ export default function EntityGraphPage() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EntityDetail | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [flyTarget, setFlyTarget] = useState<[number, number, number] | null>(null);
 
   // Fetch data
   const loadGraph = useCallback(async () => {
@@ -419,6 +450,21 @@ export default function EntityGraphPage() {
       z: n.z || 0,
     }));
   }, [filteredData]);
+
+  // Navigate to entity (fly camera + select)
+  const handleNavigate = useCallback(async (nodeId: string) => {
+    const node = nodes3D.find(n => n.id === nodeId);
+    if (node) {
+      setFlyTarget([node.x, node.y, node.z]);
+    }
+    // Also select it and load details
+    setSelectedId(nodeId);
+    try {
+      const res = await fetch(`/api/entities/${nodeId}`);
+      const data = await res.json();
+      setDetail(data);
+    } catch { setDetail(null); }
+  }, [nodes3D]);
 
   // Click handler
   const handleNodeClick = useCallback(async (nodeId: string) => {
@@ -496,6 +542,7 @@ export default function EntityGraphPage() {
               edges={filteredData.edges}
               hoveredId={hoveredId}
               selectedId={selectedId}
+              flyTarget={flyTarget}
               setHoveredId={setHoveredId}
               onNodeClick={handleNodeClick}
             />
@@ -508,7 +555,7 @@ export default function EntityGraphPage() {
           </div>
         )}
 
-        <DetailPanel entity={detail} onClose={() => { setDetail(null); setSelectedId(null); }} />
+        <DetailPanel entity={detail} onClose={() => { setDetail(null); setSelectedId(null); setFlyTarget(null); }} onNavigate={handleNavigate} />
 
         {/* Controls hint */}
         <div className="absolute bottom-4 left-4 text-[10px] text-stone-700">

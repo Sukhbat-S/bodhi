@@ -55,6 +55,20 @@
   to { stroke-dashoffset: -20; }
 }
 
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-bob { animation: bob 3s ease-in-out infinite; }
+.animate-bob-slow { animation: bob 5s ease-in-out infinite; }
+.animate-fade-in { animation: fade-in 0.2s ease-out; }
+
 .ecosystem-edge-animated path {
   animation: edge-march 1.5s linear infinite;
 }

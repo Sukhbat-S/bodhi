@@ -2,6 +2,7 @@ import { useState, lazy, Suspense } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import CommandPalette from "./components/CommandPalette";
+import Pet from "./components/Pet";
 
 // Eagerly load the landing/about page (Vercel entry point)
 import AboutPage from "./pages/AboutPage";
@@ -68,6 +69,7 @@ export default function App() {
 
       {/* Sidebar */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Pet />
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto pt-14 md:pt-0 bg-stone-950">

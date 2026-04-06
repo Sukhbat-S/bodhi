@@ -932,6 +932,27 @@ async function main() {
         if (sendStep) {
           telegramBot.sendProactiveMessage(sendStep.output).catch(() => {});
         }
+
+        // Create calendar events from time-blocks step
+        if (calendarService) {
+          const timeBlockStep = result.steps.find((s) => s.stepName === "create-time-blocks");
+          if (timeBlockStep && !timeBlockStep.skipped) {
+            try {
+              const match = timeBlockStep.output.match(/\[[\s\S]*\]/);
+              if (match) {
+                const events = JSON.parse(match[0]) as { summary: string; start: string; end: string; description?: string }[];
+                for (const event of events) {
+                  if (event.summary && event.start && event.end) {
+                    await calendarService.createEvent(event);
+                  }
+                }
+                console.log(`[workflows] Created ${events.length} calendar events from SSE endpoint`);
+              }
+            } catch (err) {
+              console.error("[workflows] Calendar creation failed:", err instanceof Error ? err.message : err);
+            }
+          }
+        }
       }
     });
   });

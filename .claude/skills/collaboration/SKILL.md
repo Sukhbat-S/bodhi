@@ -23,11 +23,10 @@ Every session should follow this flow:
 
 ## VPS Operations
 
-- SSH: `ssh -i "$HOME/Downloads/SSH Key Mar 01 2026.key" ubuntu@161.33.186.178`
-- VPS has its own independent Claude Code OAuth session (not shared with Mac)
+- SSH: `ssh -i "$SSH_KEY" $VPS_USER@$VPS_HOST` (set VPS_HOST, VPS_USER, SSH_KEY env vars)
+- VPS has its own independent Claude Code OAuth session (not shared with local machine)
 - Docker auto-starts on reboot (`restart: unless-stopped`)
-- If SSH hangs, reboot VPS from Oracle Cloud Console
-- Oracle Cloud: ap-tokyo-1, Free Tier ARM instance
+- If SSH hangs, reboot VPS from cloud console
 
 ## Important Rules
 

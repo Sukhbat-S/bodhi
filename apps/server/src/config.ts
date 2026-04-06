@@ -59,7 +59,7 @@ const envSchema = z.object({
   // Web Push Notifications (optional — enables PWA push to dashboard)
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
-  VAPID_SUBJECT: z.string().optional(), // e.g. "mailto:sukhbat@example.com"
+  VAPID_SUBJECT: z.string().optional(), // e.g. "mailto:you@example.com"
   PUBLIC_URL: z.string().optional(), // e.g. "https://bodhi.yourdomain.com"
 
   // Server

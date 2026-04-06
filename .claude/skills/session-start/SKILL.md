@@ -17,7 +17,7 @@ Call `get_bodhi_status` first.
 1. Tell the user: "BODHI server is not responding. Let me try to wake it up."
 2. Try to start it:
    - **Local:** Run `cd ~/Documents/bodhi && bash scripts/start.sh`
-   - **VPS (if local fails):** Run `ssh -i ~/Downloads/"SSH Key Mar 01 2026.key" ubuntu@161.33.186.178 "cd ~/bodhi && docker compose up -d"`
+   - **VPS (if local fails):** Run `ssh -i "$SSH_KEY" $VPS_USER@$VPS_HOST "cd ~/bodhi && docker compose up -d"`
 3. Wait 5 seconds, retry `get_bodhi_status`
 4. If still unreachable: tell the user explicitly. Do NOT silently fall back to file-based storage. Continue the session without memory context.
 
@@ -33,8 +33,8 @@ curl -s -X POST http://localhost:4000/api/chat -H "Content-Type: application/jso
 2. Give the fix commands:
    ```
    claude auth login
-   scp ~/.config/claude-code/credentials.json ubuntu@161.33.186.178:~/claude-credentials.json
-   ssh ubuntu@161.33.186.178 "docker cp ~/claude-credentials.json bodhi:/root/.config/claude-code/credentials.json && docker restart bodhi"
+   scp ~/.config/claude-code/credentials.json $VPS_USER@$VPS_HOST:~/claude-credentials.json
+   ssh $VPS_USER@$VPS_HOST "docker cp ~/claude-credentials.json bodhi:/root/.config/claude-code/credentials.json && docker restart bodhi"
    ```
 3. Don't block — continue to Step 1. Memory loading works without Bridge.
 

@@ -16,6 +16,10 @@ dist/
 *.key
 secrets.json
 
+# Personal overrides
+configs/persona/*.personal.md
+TASKS.md
+
 # Local assets
 branding/
 .tmp/

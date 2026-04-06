@@ -7,9 +7,9 @@
 
 set -e
 
-VPS_HOST="161.33.186.178"
-VPS_USER="ubuntu"
-SSH_KEY="$HOME/Downloads/SSH Key Mar 01 2026.key"
+VPS_HOST="${VPS_HOST:?Set VPS_HOST env var (e.g., export VPS_HOST=your.server.ip)}"
+VPS_USER="${VPS_USER:-ubuntu}"
+SSH_KEY="${SSH_KEY:?Set SSH_KEY env var (e.g., export SSH_KEY=~/.ssh/id_rsa)}"
 REMOTE_DIR="~/bodhi"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"

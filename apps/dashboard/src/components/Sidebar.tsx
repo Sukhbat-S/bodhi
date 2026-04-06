@@ -1,13 +1,15 @@
-import { type ReactNode, useState, useEffect } from "react";
+import { type ReactNode, useState, useEffect, useCallback } from "react";
 import { NavLink } from "react-router-dom";
 import NotificationToggle from "./NotificationToggle";
 import { BodhiLogo } from "./BodhiLogo";
+import { getPendingMemoryCount } from "../api";
 
 interface NavItem {
   to: string;
   label: string;
   icon: string;
   end?: boolean;
+  badge?: number;
 }
 
 interface NavGroup {
@@ -54,6 +56,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/status", label: "Status", icon: "pulse" },
       { to: "/quality", label: "Quality", icon: "quality" },
+      { to: "/workflows", label: "Workflows", icon: "workflows" },
       { to: "/ecosystem", label: "Ecosystem", icon: "ecosystem" },
       { to: "/notion", label: "Notion", icon: "notion" },
     ],
@@ -144,6 +147,12 @@ const icons: Record<string, ReactNode> = {
       <path strokeLinecap="round" strokeWidth={1.5} d="M10.2 9.2L12 15M13.8 9.2L12 15M9.8 9.5L14 9.5" />
     </svg>
   ),
+  workflows: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h16" />
+      <circle cx="18" cy="12" r="2" strokeWidth={2} />
+    </svg>
+  ),
   ecosystem: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="2" strokeWidth={2} />
@@ -194,7 +203,7 @@ function CollapsibleGroup({
       {!collapsed && (
         <div className="space-y-0.5 mt-0.5">
           {group.items.map((item) => (
-            <NavItem key={item.to} item={item} onClose={onClose} />
+            <NavItemLink key={item.to} item={item} onClose={onClose} />
           ))}
         </div>
       )}
@@ -202,7 +211,7 @@ function CollapsibleGroup({
   );
 }
 
-function NavItem({ item, onClose }: { item: NavItem; onClose: () => void }) {
+function NavItemLink({ item, onClose }: { item: NavItem; onClose: () => void }) {
   return (
     <NavLink
       to={item.to}
@@ -217,7 +226,12 @@ function NavItem({ item, onClose }: { item: NavItem; onClose: () => void }) {
       }
     >
       {icons[item.icon]}
-      {item.label}
+      <span className="flex-1">{item.label}</span>
+      {item.badge && item.badge > 0 ? (
+        <span className="text-[10px] font-semibold bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+          {item.badge}
+        </span>
+      ) : null}
     </NavLink>
   );
 }
@@ -231,14 +245,39 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [mode, setMode] = useState<"personal" | "builder">(() => {
     return (localStorage.getItem("sidebar-mode") as "personal" | "builder") || "personal";
   });
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     localStorage.setItem("sidebar-mode", mode);
   }, [mode]);
 
+  // Poll pending memory count every 60s
+  const fetchPendingCount = useCallback(async () => {
+    try {
+      const { count } = await getPendingMemoryCount();
+      setPendingCount(count);
+    } catch {
+      // Silently fail
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPendingCount();
+    const interval = setInterval(fetchPendingCount, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchPendingCount]);
+
+  // Inject badge into Memories nav item
+  const groupsWithBadges = navGroups.map((g) => ({
+    ...g,
+    items: g.items.map((item) =>
+      item.label === "Memories" ? { ...item, badge: pendingCount } : item
+    ),
+  }));
+
   const visibleGroups = mode === "personal"
-    ? navGroups.filter((g) => g.label === "Core" || g.label === "Knowledge")
-    : navGroups;
+    ? groupsWithBadges.filter((g) => g.label === "Core" || g.label === "Knowledge")
+    : groupsWithBadges;
 
   return (
     <>
@@ -277,7 +316,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 </p>
                 <div className="space-y-0.5 mt-0.5">
                   {group.items.map((item) => (
-                    <NavItem key={item.to} item={item} onClose={onClose} />
+                    <NavItemLink key={item.to} item={item} onClose={onClose} />
                   ))}
                 </div>
               </div>

@@ -128,6 +128,7 @@ Assistant response: ${assistantResponse}`;
           source: "extraction",
           sourceThreadId: threadId,
           importance: memory.importance,
+          status: "pending",
         });
         storedIds.push(id);
       }
@@ -202,11 +203,12 @@ ${transcript.slice(0, 8000)}`; // Cap at 8k chars to avoid huge prompts
           source: "extraction",
           importance: memory.importance,
           tags: ["telegram-session", "auto-session-save"],
+          status: "pending",
         });
         storedIds.push(id);
       }
 
-      console.log(`[memory] Session extraction: stored ${extracted.length} memories from thread`);
+      console.log(`[memory] Session extraction: stored ${extracted.length} pending memories from thread`);
 
       this.linkEntities(extractedEntities, storedIds).catch(() => {});
       this.crossReference(extracted).catch(() => {});
@@ -256,11 +258,12 @@ ${transcript.slice(0, 6000)}`;
           source: "manual",
           importance: memory.importance,
           tags: ["journal", "voice-journal"],
+          status: "pending",
         });
         storedIds.push(id);
       }
 
-      console.log(`[memory] Journal extraction: stored ${extracted.length} memories`);
+      console.log(`[memory] Journal extraction: stored ${extracted.length} pending memories`);
 
       this.linkEntities(extractedEntities, storedIds).catch(() => {});
       this.crossReference(extracted).catch(() => {});

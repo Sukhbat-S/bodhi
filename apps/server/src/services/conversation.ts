@@ -91,6 +91,8 @@ export class ConversationService {
         id: conversationTurns.id,
         role: conversationTurns.role,
         content: conversationTurns.content,
+        feedback: conversationTurns.feedback,
+        selfAssessment: conversationTurns.selfAssessment,
         createdAt: conversationTurns.createdAt,
       })
       .from(conversationTurns)
@@ -116,6 +118,67 @@ export class ConversationService {
       .update(conversationThreads)
       .set({ lastActiveAt: new Date() })
       .where(eq(conversationThreads.id, threadId));
+  }
+
+  // ============================================================
+  // Feedback + Self-Assessment
+  // ============================================================
+
+  async setFeedback(
+    turnId: string,
+    feedback: { rating: "helpful" | "unhelpful"; text?: string }
+  ): Promise<boolean> {
+    const result = await this.db
+      .update(conversationTurns)
+      .set({
+        feedback: {
+          rating: feedback.rating,
+          text: feedback.text,
+          at: new Date().toISOString(),
+        },
+      })
+      .where(
+        and(
+          eq(conversationTurns.id, turnId),
+          eq(conversationTurns.role, "assistant")
+        )
+      );
+    return (result as any).rowCount > 0;
+  }
+
+  async setSelfAssessment(
+    turnId: string,
+    assessment: { score: number; reasoning?: string }
+  ): Promise<void> {
+    await this.db
+      .update(conversationTurns)
+      .set({
+        selfAssessment: {
+          score: assessment.score,
+          reasoning: assessment.reasoning,
+          at: new Date().toISOString(),
+        },
+      })
+      .where(eq(conversationTurns.id, turnId));
+  }
+
+  /**
+   * Return the ID of the last assistant turn in a thread.
+   * Used to attach feedback or self-assessment after streaming completes.
+   */
+  async getLastAssistantTurnId(threadId: string): Promise<string | null> {
+    const [turn] = await this.db
+      .select({ id: conversationTurns.id })
+      .from(conversationTurns)
+      .where(
+        and(
+          eq(conversationTurns.threadId, threadId),
+          eq(conversationTurns.role, "assistant")
+        )
+      )
+      .orderBy(desc(conversationTurns.createdAt))
+      .limit(1);
+    return turn?.id ?? null;
   }
 
   // ============================================================

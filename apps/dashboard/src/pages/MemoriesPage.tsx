@@ -3,6 +3,9 @@ import {
   getMemories,
   searchMemories,
   deleteMemory,
+  getPendingMemories,
+  confirmMemory,
+  rejectMemory,
   type Memory,
 } from "../api";
 import MemoryCard from "../components/MemoryCard";
@@ -19,6 +22,8 @@ export default function MemoriesPage() {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingMemories, setPendingMemories] = useState<Memory[]>([]);
+  const [showPending, setShowPending] = useState(true);
 
   const loadMemories = useCallback(async () => {
     setLoading(true);
@@ -47,6 +52,45 @@ export default function MemoriesPage() {
   useEffect(() => {
     loadMemories();
   }, [loadMemories]);
+
+  // Load pending memories
+  const loadPending = useCallback(async () => {
+    try {
+      const { memories: pending } = await getPendingMemories();
+      setPendingMemories(pending);
+    } catch {
+      // Non-critical
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPending();
+  }, [loadPending]);
+
+  const handleConfirm = async (id: string) => {
+    try {
+      await confirmMemory(id);
+      setPendingMemories((prev) => prev.filter((m) => m.id !== id));
+    } catch {
+      // Failed
+    }
+  };
+
+  const handleReject = async (id: string) => {
+    try {
+      await rejectMemory(id);
+      setPendingMemories((prev) => prev.filter((m) => m.id !== id));
+    } catch {
+      // Failed
+    }
+  };
+
+  const handleConfirmAll = async () => {
+    for (const m of pendingMemories) {
+      try { await confirmMemory(m.id); } catch { /* skip */ }
+    }
+    setPendingMemories([]);
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,6 +167,74 @@ export default function MemoriesPage() {
           )}
         </div>
       </form>
+
+      {/* Pending Review */}
+      {pendingMemories.length > 0 && (
+        <div className="mb-6">
+          <button
+            onClick={() => setShowPending(!showPending)}
+            className="flex items-center gap-2 mb-3"
+          >
+            <span className="text-sm font-medium text-amber-400">
+              Pending Review ({pendingMemories.length})
+            </span>
+            <svg
+              className={`w-4 h-4 text-amber-400 transition-transform ${showPending ? "" : "-rotate-90"}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showPending && (
+            <div className="space-y-2">
+              {pendingMemories.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-start gap-3 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-stone-300">{m.content}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] uppercase font-medium text-stone-500 bg-stone-800 px-1.5 py-0.5 rounded">
+                        {m.type}
+                      </span>
+                      <span className="text-[10px] text-stone-600">
+                        importance: {m.importance.toFixed(1)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      onClick={() => handleConfirm(m.id)}
+                      className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                      title="Confirm"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleReject(m.id)}
+                      className="p-1.5 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                      title="Reject"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={handleConfirmAll}
+                className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
+              >
+                Confirm all
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Active tag filter */}
       {activeTag && (

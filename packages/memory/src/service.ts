@@ -15,6 +15,7 @@ export interface MemoryInput {
   sourceThreadId?: string;
   importance?: number;
   tags?: string[];
+  status?: "confirmed" | "pending" | "rejected";
 }
 
 export interface MemoryResult {
@@ -50,6 +51,7 @@ export class MemoryService {
         importance: input.importance ?? 0.5,
         embedding,
         tags: input.tags,
+        status: input.status ?? "confirmed",
       })
       .returning({ id: memories.id });
 
@@ -100,6 +102,7 @@ export class MemoryService {
         1 - (embedding <=> ${JSON.stringify(queryEmbedding)}::vector) as similarity
       FROM memories
       WHERE confidence > 0.1
+        AND status = 'confirmed'
       ORDER BY embedding <=> ${JSON.stringify(queryEmbedding)}::vector
       LIMIT ${limit}
     `);
@@ -489,5 +492,65 @@ export class MemoryService {
     }));
 
     return { totalMemories, topTags, recentCount };
+  }
+
+  // ============================================================
+  // Pending memory confirmation gate
+  // ============================================================
+
+  async getPendingMemories(limit = 20): Promise<MemoryResult[]> {
+    const results = await this.db.execute(sql`
+      SELECT id, content, type, importance, confidence, tags, created_at
+      FROM memories
+      WHERE status = 'pending'
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `);
+
+    return (results as any[]).map((r: any) => ({
+      id: r.id,
+      content: r.content,
+      type: r.type,
+      importance: r.importance,
+      confidence: r.confidence,
+      similarity: 1,
+      createdAt: new Date(r.created_at),
+      tags: r.tags,
+    }));
+  }
+
+  async getPendingCount(): Promise<number> {
+    const result = await this.db.execute(
+      sql`SELECT count(*)::int as count FROM memories WHERE status = 'pending'`
+    );
+    return (result as any[])[0]?.count ?? 0;
+  }
+
+  async confirmMemory(id: string): Promise<boolean> {
+    const result = await this.db.execute(sql`
+      UPDATE memories
+      SET status = 'confirmed', updated_at = now()
+      WHERE id = ${id} AND status = 'pending'
+    `);
+    return ((result as any).rowCount ?? 0) > 0;
+  }
+
+  async rejectMemory(id: string): Promise<boolean> {
+    const result = await this.db.execute(sql`
+      UPDATE memories
+      SET status = 'rejected', confidence = 0, updated_at = now()
+      WHERE id = ${id} AND status = 'pending'
+    `);
+    return ((result as any).rowCount ?? 0) > 0;
+  }
+
+  async autoConfirmOldPending(daysOld = 7): Promise<number> {
+    const result = await this.db.execute(sql`
+      UPDATE memories
+      SET status = 'confirmed', updated_at = now()
+      WHERE status = 'pending'
+        AND created_at < now() - ${daysOld + ' days'}::interval
+    `);
+    return (result as any).rowCount ?? 0;
   }
 }

@@ -5,8 +5,10 @@ import {
   getConversations,
   getConversation,
   deleteConversation,
+  setTurnFeedback,
   type ChatMessage as ChatMsg,
   type ConversationThread,
+  type TurnFeedback,
 } from "../api";
 import ChatMessage from "../components/ChatMessage";
 
@@ -24,9 +26,14 @@ function relativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
+interface DisplayMessage extends ChatMsg {
+  turnId?: string;
+  feedback?: TurnFeedback | null;
+}
+
 export default function ChatPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
@@ -127,7 +134,14 @@ export default function ChatPage() {
     try {
       const { turns } = await getConversation(threadId);
       setActiveThreadId(threadId);
-      setMessages(turns.map((t) => ({ role: t.role, content: t.content })));
+      setMessages(
+        turns.map((t) => ({
+          role: t.role,
+          content: t.content,
+          turnId: t.id,
+          feedback: t.feedback,
+        }))
+      );
       setStreamingContent("");
     } catch {
       // Failed to load — ignore
@@ -199,6 +213,32 @@ export default function ChatPage() {
     }
 
     inputRef.current?.focus();
+  };
+
+  const handleFeedback = async (
+    turnId: string,
+    rating: "helpful" | "unhelpful",
+    text?: string
+  ) => {
+    if (!activeThreadId) return;
+    // Optimistic update
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.turnId === turnId
+          ? { ...m, feedback: { rating, text, at: new Date().toISOString() } }
+          : m
+      )
+    );
+    try {
+      await setTurnFeedback(activeThreadId, turnId, { rating, text });
+    } catch {
+      // Revert on failure
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.turnId === turnId ? { ...m, feedback: null } : m
+        )
+      );
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -380,7 +420,15 @@ export default function ChatPage() {
           )}
 
           {messages.map((msg, i) => (
-            <ChatMessage key={i} role={msg.role} content={msg.content} />
+            <ChatMessage
+              key={msg.turnId || i}
+              role={msg.role}
+              content={msg.content}
+              turnId={msg.turnId}
+              threadId={activeThreadId ?? undefined}
+              feedback={msg.feedback}
+              onFeedback={handleFeedback}
+            />
           ))}
 
           {streaming && streamingContent && (

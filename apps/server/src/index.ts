@@ -25,7 +25,7 @@ import { getDb } from "@seneca/db";
 import { sql } from "drizzle-orm";
 import { MemoryService, MemoryExtractor, MemoryContextProvider, MemorySynthesizer, InsightGenerator, EntityService, EntityBackfill, EntityContextProvider, GoalContextProvider } from "@seneca/memory";
 import { TelegramBot } from "@seneca/channel-telegram";
-import { Scheduler } from "@seneca/scheduler";
+import { Scheduler, workflowRegistry } from "@seneca/scheduler";
 import { NotionService, NotionContextProvider } from "@seneca/notion";
 import {
   GoogleAuth,
@@ -325,8 +325,9 @@ async function main() {
     pushSender: pushService,
     briefingStore,
     entityService,
+    workflows: workflowRegistry,
   });
-  console.log("  Scheduler: initialized (morning/evening/weekly briefings)");
+  console.log("  Scheduler: initialized (morning/evening/weekly briefings + workflows)");
 
   // 10. Set up Hono API server
   const app = new Hono();
@@ -611,6 +612,32 @@ async function main() {
     });
   });
 
+  // ---- Pending Memories API ----
+
+  app.get("/api/memories/pending", async (c) => {
+    const limit = Number(c.req.query("limit")) || 20;
+    const memories = await memoryService.getPendingMemories(limit);
+    const count = await memoryService.getPendingCount();
+    return c.json({ memories, count });
+  });
+
+  app.get("/api/memories/pending/count", async (c) => {
+    const count = await memoryService.getPendingCount();
+    return c.json({ count });
+  });
+
+  app.post("/api/memories/:id/confirm", async (c) => {
+    const confirmed = await memoryService.confirmMemory(c.req.param("id"));
+    if (!confirmed) return c.json({ error: "Memory not found or not pending" }, 404);
+    return c.json({ confirmed: true });
+  });
+
+  app.post("/api/memories/:id/reject", async (c) => {
+    const rejected = await memoryService.rejectMemory(c.req.param("id"));
+    if (!rejected) return c.json({ error: "Memory not found or not pending" }, 404);
+    return c.json({ rejected: true });
+  });
+
   // ---- Entity Graph API ----
 
   app.get("/api/entities", async (c) => {
@@ -780,18 +807,48 @@ async function main() {
     return c.json({ deleted: true });
   });
 
+  app.patch("/api/conversations/:threadId/turns/:turnId/feedback", async (c) => {
+    const { turnId } = c.req.param() as { threadId: string; turnId: string };
+    const body = await c.req.json<{ rating: "helpful" | "unhelpful"; text?: string }>();
+    if (!body.rating || !["helpful", "unhelpful"].includes(body.rating)) {
+      return c.json({ error: "rating must be 'helpful' or 'unhelpful'" }, 400);
+    }
+    const updated = await conversationService.setFeedback(turnId, {
+      rating: body.rating,
+      text: body.text,
+    });
+    return c.json({ updated });
+  });
+
   // API: Scheduler
   app.get("/api/scheduler", (c) => {
     return c.json(scheduler.getStatus());
   });
 
   app.post("/api/scheduler/trigger", async (c) => {
-    const body = await c.req.json<{ type: string }>();
-    const validTypes = ["morning", "evening", "weekly", "synthesis", "inbox-triage"];
+    const body = await c.req.json<{ type: string; workflowId?: string }>();
+    const validTypes = ["morning", "evening", "weekly", "synthesis", "inbox-triage", "workflow"];
     if (!body.type || !validTypes.includes(body.type)) {
       return c.json({ error: `type must be one of: ${validTypes.join(", ")}` }, 400);
     }
-    const result = await scheduler.trigger(body.type as "morning" | "evening" | "weekly" | "synthesis" | "inbox-triage");
+    if (body.type === "workflow" && !body.workflowId) {
+      return c.json({ error: "workflowId required for workflow trigger" }, 400);
+    }
+    const result = await scheduler.trigger(
+      body.type as any,
+      body.workflowId
+    );
+    return c.json(result);
+  });
+
+  // API: Workflows
+  app.get("/api/workflows", (c) => {
+    return c.json({ workflows: scheduler.getWorkflows() });
+  });
+
+  app.post("/api/workflows/:id/run", async (c) => {
+    const id = c.req.param("id");
+    const result = await scheduler.runWorkflow(id);
     return c.json(result);
   });
 

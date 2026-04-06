@@ -30,6 +30,12 @@ export const memorySourceEnum = pgEnum("memory_source", [
   "synthesis",
 ]);
 
+export const memoryStatusEnum = pgEnum("memory_status", [
+  "confirmed",
+  "pending",
+  "rejected",
+]);
+
 export const memories = pgTable("memories", {
   id: uuid("id").primaryKey().defaultRandom(),
   type: memoryTypeEnum("type").notNull().default("fact"),
@@ -46,6 +52,7 @@ export const memories = pgTable("memories", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+  status: memoryStatusEnum("status").notNull().default("confirmed"),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

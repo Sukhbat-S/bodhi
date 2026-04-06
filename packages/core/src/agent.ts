@@ -12,6 +12,13 @@ import type {
   ModelId,
   TokenUsage,
 } from "./types.js";
+import type {
+  WorkflowDefinition,
+  WorkflowResult,
+  WorkflowProgress,
+  WorkflowProgressCallback,
+  StepOutput,
+} from "./workflow.js";
 
 const DEFAULT_CONFIG: AgentConfig = {
   persona: "",
@@ -139,6 +146,196 @@ export class Agent {
       model: this.config.model,
       tokenUsage: { inputTokens: 0, outputTokens: 0 },
       durationMs: Date.now() - startTime,
+    };
+  }
+
+  /**
+   * Run a multi-step workflow, passing each step's output as context to the next.
+   * The 1M token context window IS the state machine.
+   */
+  async runWorkflow(
+    definition: WorkflowDefinition,
+    context?: ContextSnapshot,
+    onProgress?: WorkflowProgressCallback,
+    resumeFromStep = 0,
+    previousOutputs: StepOutput[] = []
+  ): Promise<WorkflowResult> {
+    const runId = crypto.randomUUID();
+    const startTime = Date.now();
+    const outputs: StepOutput[] = [...previousOutputs];
+
+    console.log(`[agent] Starting workflow "${definition.id}" (${definition.steps.length} steps, resume from ${resumeFromStep})`);
+
+    for (let i = resumeFromStep; i < definition.steps.length; i++) {
+      const step = definition.steps[i];
+
+      // Report progress
+      onProgress?.({
+        workflowId: definition.id,
+        runId,
+        currentStep: i,
+        totalSteps: definition.steps.length,
+        stepName: step.name,
+        status: "running",
+      });
+
+      // Check if step should be skipped
+      if (step.shouldRun && !step.shouldRun(outputs)) {
+        console.log(`[agent] Skipping step "${step.name}" (shouldRun returned false)`);
+        outputs.push({
+          stepName: step.name,
+          output: "",
+          durationMs: 0,
+          skipped: true,
+        });
+        continue;
+      }
+
+      // Check if approval is required before this step
+      if (step.requiresApproval && i > resumeFromStep) {
+        console.log(`[agent] Workflow paused at step "${step.name}" — requires approval`);
+        onProgress?.({
+          workflowId: definition.id,
+          runId,
+          currentStep: i,
+          totalSteps: definition.steps.length,
+          stepName: step.name,
+          status: "paused",
+        });
+        return {
+          runId,
+          workflowId: definition.id,
+          status: "paused",
+          steps: outputs,
+          totalDurationMs: Date.now() - startTime,
+          pauseReason: `Approval required before step: ${step.name}`,
+          resumeFromStep: i,
+        };
+      }
+
+      // Build the step prompt
+      const promptText =
+        typeof step.prompt === "function" ? step.prompt(outputs) : step.prompt;
+
+      // Build workflow context from previous steps
+      let workflowContext = `<workflow>\n`;
+      workflowContext += `<workflow_name>${definition.name}</workflow_name>\n`;
+      workflowContext += `<current_step>${i + 1} of ${definition.steps.length}: ${step.name}</current_step>\n`;
+      if (outputs.length > 0) {
+        workflowContext += `<previous_steps>\n`;
+        for (const prev of outputs) {
+          if (!prev.skipped) {
+            workflowContext += `<step name="${prev.stepName}">\n${prev.output}\n</step>\n`;
+          }
+        }
+        workflowContext += `</previous_steps>\n`;
+      }
+      workflowContext += `</workflow>\n\n`;
+
+      const fullPrompt = workflowContext + promptText;
+
+      // Override model if step specifies one
+      const originalModel = this.config.model;
+      if (step.model) {
+        this.config.model = step.model === "opus"
+          ? "claude-opus-4-6"
+          : "claude-sonnet-4-5-20250929";
+      }
+
+      const stepStart = Date.now();
+      try {
+        const response = await this.chat(fullPrompt, context);
+        outputs.push({
+          stepName: step.name,
+          output: response.content,
+          durationMs: Date.now() - stepStart,
+          skipped: false,
+        });
+        console.log(`[agent] Step "${step.name}" completed (${((Date.now() - stepStart) / 1000).toFixed(1)}s)`);
+      } catch (error) {
+        console.error(`[agent] Step "${step.name}" failed:`, error);
+        outputs.push({
+          stepName: step.name,
+          output: error instanceof Error ? error.message : String(error),
+          durationMs: Date.now() - stepStart,
+          skipped: false,
+        });
+
+        // Restore model and return failure
+        this.config.model = originalModel;
+        onProgress?.({
+          workflowId: definition.id,
+          runId,
+          currentStep: i,
+          totalSteps: definition.steps.length,
+          stepName: step.name,
+          status: "failed",
+        });
+        return {
+          runId,
+          workflowId: definition.id,
+          status: "failed",
+          steps: outputs,
+          totalDurationMs: Date.now() - startTime,
+          error: `Step "${step.name}" failed: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+
+      // Restore model
+      this.config.model = originalModel;
+
+      // Check onStepComplete callback
+      if (definition.onStepComplete) {
+        const decision = definition.onStepComplete(i, outputs[outputs.length - 1], outputs);
+        if (decision === "pause") {
+          onProgress?.({
+            workflowId: definition.id,
+            runId,
+            currentStep: i + 1,
+            totalSteps: definition.steps.length,
+            stepName: step.name,
+            status: "paused",
+          });
+          return {
+            runId,
+            workflowId: definition.id,
+            status: "paused",
+            steps: outputs,
+            totalDurationMs: Date.now() - startTime,
+            pauseReason: `Paused after step: ${step.name}`,
+            resumeFromStep: i + 1,
+          };
+        }
+        if (decision === "abort") {
+          return {
+            runId,
+            workflowId: definition.id,
+            status: "failed",
+            steps: outputs,
+            totalDurationMs: Date.now() - startTime,
+            error: `Aborted after step: ${step.name}`,
+          };
+        }
+      }
+    }
+
+    onProgress?.({
+      workflowId: definition.id,
+      runId,
+      currentStep: definition.steps.length,
+      totalSteps: definition.steps.length,
+      stepName: "done",
+      status: "completed",
+    });
+
+    console.log(`[agent] Workflow "${definition.id}" completed (${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
+
+    return {
+      runId,
+      workflowId: definition.id,
+      status: "completed",
+      steps: outputs,
+      totalDurationMs: Date.now() - startTime,
     };
   }
 

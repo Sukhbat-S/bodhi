@@ -3,3 +3,4 @@ export * from "./memories.js";
 export * from "./push-subscriptions.js";
 export * from "./briefings.js";
 export * from "./entities.js";
+export * from "./workflow-runs.js";

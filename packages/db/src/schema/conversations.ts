@@ -56,6 +56,8 @@ export const conversationTurns = pgTable("conversation_turns", {
   tokenUsage: jsonb("token_usage").$type<TokenUsageJSON>(),
   modelUsed: text("model_used"),
   durationMs: integer("duration_ms"),
+  feedback: jsonb("feedback").$type<TurnFeedbackJSON>(),
+  selfAssessment: jsonb("self_assessment").$type<SelfAssessmentJSON>(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -106,4 +108,16 @@ interface TokenUsageJSON {
   outputTokens: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+}
+
+export interface TurnFeedbackJSON {
+  rating: "helpful" | "unhelpful";
+  text?: string;
+  at: string; // ISO timestamp
+}
+
+export interface SelfAssessmentJSON {
+  score: number; // 1-5
+  reasoning?: string;
+  at: string; // ISO timestamp
 }

@@ -12,6 +12,7 @@ export interface SynthesisReport {
   connected: number;
   decayed: number;
   promoted: number;
+  autoConfirmed: number;
   durationMs: number;
 }
 
@@ -31,10 +32,11 @@ export class MemorySynthesizer {
     const startTime = Date.now();
     console.log("[synthesizer] Starting daily synthesis cycle...");
 
-    const [deduped, decayed, promoted] = await Promise.all([
+    const [deduped, decayed, promoted, autoConfirmed] = await Promise.all([
       this.dedup(),
       this.decay(),
       this.promote(),
+      this.autoConfirmPending(),
     ]);
 
     // Connect runs after dedup to avoid processing duplicates
@@ -45,11 +47,12 @@ export class MemorySynthesizer {
       connected,
       decayed,
       promoted,
+      autoConfirmed,
       durationMs: Date.now() - startTime,
     };
 
     console.log(
-      `[synthesizer] Done: ${deduped} deduped, ${connected} connected, ${decayed} decayed, ${promoted} promoted (${(report.durationMs / 1000).toFixed(1)}s)`
+      `[synthesizer] Done: ${deduped} deduped, ${connected} connected, ${decayed} decayed, ${promoted} promoted, ${autoConfirmed} auto-confirmed (${(report.durationMs / 1000).toFixed(1)}s)`
     );
 
     return report;
@@ -194,6 +197,18 @@ Write the synthesis:`;
 
     console.log(`[synthesizer] Decayed ${ids.length} stale memories (confidence -0.1)`);
     return ids.length;
+  }
+
+  /**
+   * Auto-confirm pending memories older than 7 days.
+   * Prevents the pending queue from becoming a chore.
+   */
+  private async autoConfirmPending(): Promise<number> {
+    const confirmed = await this.memoryService.autoConfirmOldPending(7);
+    if (confirmed > 0) {
+      console.log(`[synthesizer] Auto-confirmed ${confirmed} pending memories (>7 days old)`);
+    }
+    return confirmed;
   }
 
   /**

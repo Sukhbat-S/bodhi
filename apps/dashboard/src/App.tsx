@@ -1,24 +1,37 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import CommandPalette from "./components/CommandPalette";
+
+// Eagerly load the landing/about page (Vercel entry point)
 import AboutPage from "./pages/AboutPage";
-import ReflectionPage from "./pages/ReflectionPage";
-import StatusPage from "./pages/StatusPage";
-import MemoriesPage from "./pages/MemoriesPage";
-import QualityPage from "./pages/QualityPage";
-import InboxPage from "./pages/InboxPage";
-import CalendarPage from "./pages/CalendarPage";
-import ChatPage from "./pages/ChatPage";
-import NotionPage from "./pages/NotionPage";
-import GitHubPage from "./pages/GitHubPage";
-import VercelPage from "./pages/VercelPage";
-import SupabasePage from "./pages/SupabasePage";
-import EcosystemPage from "./pages/EcosystemPage";
-import BriefingsPage from "./pages/BriefingsPage";
-import SearchPage from "./pages/SearchPage";
-import TimelinePage from "./pages/TimelinePage";
-import EntityGraphPage from "./pages/EntityGraphPage";
+
+// Lazy-load all other pages — splits the 786K monolith into per-route chunks
+const ReflectionPage = lazy(() => import("./pages/ReflectionPage"));
+const StatusPage = lazy(() => import("./pages/StatusPage"));
+const MemoriesPage = lazy(() => import("./pages/MemoriesPage"));
+const QualityPage = lazy(() => import("./pages/QualityPage"));
+const InboxPage = lazy(() => import("./pages/InboxPage"));
+const CalendarPage = lazy(() => import("./pages/CalendarPage"));
+const ChatPage = lazy(() => import("./pages/ChatPage"));
+const NotionPage = lazy(() => import("./pages/NotionPage"));
+const GitHubPage = lazy(() => import("./pages/GitHubPage"));
+const VercelPage = lazy(() => import("./pages/VercelPage"));
+const SupabasePage = lazy(() => import("./pages/SupabasePage"));
+const EcosystemPage = lazy(() => import("./pages/EcosystemPage"));
+const BriefingsPage = lazy(() => import("./pages/BriefingsPage"));
+const SearchPage = lazy(() => import("./pages/SearchPage"));
+const TimelinePage = lazy(() => import("./pages/TimelinePage"));
+const EntityGraphPage = lazy(() => import("./pages/EntityGraphPage"));
+const WorkflowsPage = lazy(() => import("./pages/WorkflowsPage"));
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div className="text-stone-600 text-sm">Loading...</div>
+    </div>
+  );
+}
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -58,24 +71,27 @@ export default function App() {
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto pt-14 md:pt-0 bg-stone-950">
-        <Routes>
-          <Route path="/" element={<ReflectionPage />} />
-          <Route path="/status" element={<StatusPage />} />
-          <Route path="/briefings" element={<BriefingsPage />} />
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/ecosystem" element={<EcosystemPage />} />
-          <Route path="/memories" element={<MemoriesPage />} />
-          <Route path="/quality" element={<QualityPage />} />
-          <Route path="/inbox" element={<InboxPage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/notion" element={<NotionPage />} />
-          <Route path="/github" element={<GitHubPage />} />
-          <Route path="/vercel" element={<VercelPage />} />
-          <Route path="/supabase" element={<SupabasePage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/timeline" element={<TimelinePage />} />
-          <Route path="/entities" element={<EntityGraphPage />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<ReflectionPage />} />
+            <Route path="/status" element={<StatusPage />} />
+            <Route path="/briefings" element={<BriefingsPage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/ecosystem" element={<EcosystemPage />} />
+            <Route path="/memories" element={<MemoriesPage />} />
+            <Route path="/quality" element={<QualityPage />} />
+            <Route path="/workflows" element={<WorkflowsPage />} />
+            <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/notion" element={<NotionPage />} />
+            <Route path="/github" element={<GitHubPage />} />
+            <Route path="/vercel" element={<VercelPage />} />
+            <Route path="/supabase" element={<SupabasePage />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/timeline" element={<TimelinePage />} />
+            <Route path="/entities" element={<EntityGraphPage />} />
+          </Routes>
+        </Suspense>
       </main>
     </div>
   );

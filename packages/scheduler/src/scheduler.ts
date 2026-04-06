@@ -12,7 +12,7 @@ import type { MemorySynthesizer } from "@seneca/memory";
 import type { InsightGenerator, Insight } from "@seneca/memory";
 
 export type BriefingType = "morning" | "evening" | "weekly";
-export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest";
+export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest" | "workflow";
 
 interface TelegramSender {
   sendProactiveMessage(text: string): Promise<void>;
@@ -80,6 +80,7 @@ export interface SchedulerConfig {
   pushSender?: PushSender | null;
   briefingStore?: BriefingStore | null;
   entityService?: EntityDataSource | null;
+  workflows?: Map<string, import("@seneca/core").WorkflowDefinition>;
 }
 
 interface JobRecord {
@@ -277,7 +278,7 @@ export class Scheduler {
   /**
    * Manually trigger a briefing or synthesis (for testing via API).
    */
-  async trigger(type: SchedulerJobType): Promise<{ status: string; content?: string; error?: string }> {
+  async trigger(type: SchedulerJobType, workflowId?: string): Promise<{ status: string; content?: string; error?: string }> {
     if (type === "synthesis") {
       return this.runSynthesis();
     }
@@ -287,7 +288,66 @@ export class Scheduler {
     if (type === "build-digest") {
       return this.runBuildDigest();
     }
+    if (type === "workflow" && workflowId) {
+      return this.runWorkflow(workflowId);
+    }
+    if (type === "workflow") {
+      return { status: "error", error: "workflowId required" };
+    }
     return this.runBriefing(type);
+  }
+
+  /**
+   * Run a multi-step workflow by ID.
+   */
+  async runWorkflow(workflowId: string): Promise<{ status: string; content?: string; error?: string }> {
+    const definition = this.config.workflows?.get(workflowId);
+    if (!definition) {
+      return { status: "error", error: `Unknown workflow: ${workflowId}` };
+    }
+
+    const startTime = Date.now();
+    try {
+      console.log(`[scheduler] Running workflow "${workflowId}"...`);
+
+      const result = await this.config.agent.runWorkflow(
+        definition,
+        undefined,
+        (progress) => {
+          console.log(`[scheduler] Workflow ${progress.workflowId} step ${progress.currentStep + 1}/${progress.totalSteps}: ${progress.stepName} (${progress.status})`);
+        }
+      );
+
+      // Send final step output to Telegram
+      const lastStep = result.steps[result.steps.length - 1];
+      if (lastStep && !lastStep.skipped) {
+        try {
+          await this.config.telegram.sendProactiveMessage(lastStep.output);
+        } catch {
+          console.error("[scheduler] Failed to send workflow result to Telegram");
+        }
+      }
+
+      const summary = `Workflow "${definition.name}" ${result.status}: ${result.steps.length} steps in ${((Date.now() - startTime) / 1000).toFixed(1)}s`;
+      return { status: result.status, content: summary };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] Workflow "${workflowId}" failed: ${errMsg}`);
+      return { status: "error", error: errMsg };
+    }
+  }
+
+  /**
+   * Get list of available workflow definitions.
+   */
+  getWorkflows(): { id: string; name: string; description: string; stepsCount: number }[] {
+    if (!this.config.workflows) return [];
+    return Array.from(this.config.workflows.values()).map((w) => ({
+      id: w.id,
+      name: w.name,
+      description: w.description,
+      stepsCount: w.steps.length,
+    }));
   }
 
   /**

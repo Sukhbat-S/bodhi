@@ -255,10 +255,17 @@ export interface ConversationThread {
   lastActiveAt: string;
 }
 
+export interface TurnFeedback {
+  rating: "helpful" | "unhelpful";
+  text?: string;
+  at: string;
+}
+
 export interface ConversationTurn {
   id: string;
   role: "user" | "assistant";
   content: string;
+  feedback?: TurnFeedback | null;
   createdAt: string;
 }
 
@@ -281,6 +288,41 @@ export function getConversation(id: string) {
 export function deleteConversation(id: string) {
   return request<{ deleted: boolean }>(`/conversations/${id}`, {
     method: "DELETE",
+  });
+}
+
+export function setTurnFeedback(
+  threadId: string,
+  turnId: string,
+  data: { rating: "helpful" | "unhelpful"; text?: string }
+) {
+  return request<{ updated: boolean }>(
+    `/conversations/${threadId}/turns/${turnId}/feedback`,
+    { method: "PATCH", body: JSON.stringify(data) }
+  );
+}
+
+// --- Pending Memories ---
+
+export function getPendingMemories(limit = 20) {
+  return request<{ memories: Memory[]; count: number }>(
+    `/memories/pending?limit=${limit}`
+  );
+}
+
+export function getPendingMemoryCount() {
+  return request<{ count: number }>("/memories/pending/count");
+}
+
+export function confirmMemory(id: string) {
+  return request<{ confirmed: boolean }>(`/memories/${id}/confirm`, {
+    method: "POST",
+  });
+}
+
+export function rejectMemory(id: string) {
+  return request<{ rejected: boolean }>(`/memories/${id}/reject`, {
+    method: "POST",
   });
 }
 
@@ -553,4 +595,24 @@ export async function streamChat(
   }
 
   return resolvedThreadId;
+}
+
+// --- Workflows ---
+
+export interface WorkflowInfo {
+  id: string;
+  name: string;
+  description: string;
+  stepsCount: number;
+}
+
+export function getWorkflows() {
+  return request<{ workflows: WorkflowInfo[] }>("/workflows");
+}
+
+export function triggerWorkflow(id: string) {
+  return request<{ status: string; content?: string; error?: string }>(
+    `/workflows/${id}/run`,
+    { method: "POST" }
+  );
 }

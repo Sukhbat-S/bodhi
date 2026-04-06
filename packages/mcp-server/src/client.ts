@@ -608,3 +608,39 @@ function formatUptime(seconds: number): string {
   const mins = Math.floor((seconds % 3600) / 60);
   return `${hours}h ${mins}m`;
 }
+
+// ============================================================
+// Workflows
+// ============================================================
+
+export async function getWorkflows(): Promise<string> {
+  const result = await bodhiFetch<{
+    workflows: { id: string; name: string; description: string; stepsCount: number }[];
+  }>("/api/workflows");
+
+  if (!result.ok) return result.error;
+
+  const wfs = result.data.workflows;
+  if (wfs.length === 0) return "No workflows registered.";
+
+  const lines = wfs.map(
+    (w) => `- **${w.name}** (\`${w.id}\`): ${w.description} (${w.stepsCount} steps)`
+  );
+  return `Available workflows:\n\n${lines.join("\n")}`;
+}
+
+export async function triggerWorkflow(workflowId: string): Promise<string> {
+  const result = await bodhiFetch<{
+    status: string;
+    content?: string;
+    error?: string;
+  }>(`/api/workflows/${workflowId}/run`, { method: "POST" });
+
+  if (!result.ok) return result.error;
+
+  const d = result.data;
+  if (d.status === "error" || d.status === "failed") {
+    return `Workflow "${workflowId}" failed: ${d.error || "Unknown error"}`;
+  }
+  return `Workflow "${workflowId}" ${d.status}. ${d.content || ""}`;
+}

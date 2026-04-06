@@ -28,6 +28,8 @@ import {
   extractMemories,
   generateBuildLog,
   generateWeeklyDigest,
+  getWorkflows,
+  triggerWorkflow,
 } from "./client.js";
 
 // Create MCP server
@@ -291,6 +293,34 @@ server.tool(
   {},
   async () => {
     const result = await generateWeeklyDigest();
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: get_workflows
+// --------------------------------------------------
+server.tool(
+  "get_workflows",
+  "List available BODHI workflows — multi-step agent pipelines for morning research, deployment verification, and weekly synthesis.",
+  {},
+  async () => {
+    const result = await getWorkflows();
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: trigger_workflow
+// --------------------------------------------------
+server.tool(
+  "trigger_workflow",
+  "Trigger a BODHI workflow by ID. Runs a multi-step agent pipeline (e.g., morning-research, deploy-verify, weekly-synthesis). Each step passes its output as context to the next.",
+  {
+    workflow_id: z.string().describe("Workflow ID (e.g., 'morning-research', 'deploy-verify', 'weekly-synthesis')"),
+  },
+  async ({ workflow_id }) => {
+    const result = await triggerWorkflow(workflow_id);
     return { content: [{ type: "text" as const, text: result }] };
   },
 );

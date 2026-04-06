@@ -5,6 +5,8 @@
 // ============================================================
 
 import type { AIBackend } from "@seneca/core";
+import type { Database } from "@seneca/db";
+import { sql } from "drizzle-orm";
 import type { MemoryService, MemoryResult } from "./service.js";
 
 export interface SynthesisReport {
@@ -13,16 +15,19 @@ export interface SynthesisReport {
   decayed: number;
   promoted: number;
   autoConfirmed: number;
+  feedbackApplied: number;
   durationMs: number;
 }
 
 export class MemorySynthesizer {
   private memoryService: MemoryService;
   private backend: AIBackend;
+  private db?: Database;
 
-  constructor(memoryService: MemoryService, backend: AIBackend) {
+  constructor(memoryService: MemoryService, backend: AIBackend, db?: Database) {
     this.memoryService = memoryService;
     this.backend = backend;
+    this.db = db;
   }
 
   /**
@@ -32,11 +37,12 @@ export class MemorySynthesizer {
     const startTime = Date.now();
     console.log("[synthesizer] Starting daily synthesis cycle...");
 
-    const [deduped, decayed, promoted, autoConfirmed] = await Promise.all([
+    const [deduped, decayed, promoted, autoConfirmed, feedbackApplied] = await Promise.all([
       this.dedup(),
       this.decay(),
       this.promote(),
       this.autoConfirmPending(),
+      this.applyFeedbackSignals(),
     ]);
 
     // Connect runs after dedup to avoid processing duplicates
@@ -48,11 +54,12 @@ export class MemorySynthesizer {
       decayed,
       promoted,
       autoConfirmed,
+      feedbackApplied,
       durationMs: Date.now() - startTime,
     };
 
     console.log(
-      `[synthesizer] Done: ${deduped} deduped, ${connected} connected, ${decayed} decayed, ${promoted} promoted, ${autoConfirmed} auto-confirmed (${(report.durationMs / 1000).toFixed(1)}s)`
+      `[synthesizer] Done: ${deduped} deduped, ${connected} connected, ${decayed} decayed, ${promoted} promoted, ${autoConfirmed} auto-confirmed, ${feedbackApplied} feedback-applied (${(report.durationMs / 1000).toFixed(1)}s)`
     );
 
     return report;
@@ -197,6 +204,65 @@ Write the synthesis:`;
 
     console.log(`[synthesizer] Decayed ${ids.length} stale memories (confidence -0.1)`);
     return ids.length;
+  }
+
+  /**
+   * Apply user feedback signals to memory confidence/importance.
+   * Unhelpful responses → reduce confidence of associated memories.
+   * Helpful responses → boost importance of associated memories.
+   */
+  private async applyFeedbackSignals(): Promise<number> {
+    if (!this.db) return 0;
+
+    try {
+      // Find turns with feedback from the past 24 hours
+      const turns = await this.db.execute(sql`
+        SELECT id, feedback, context_snapshot
+        FROM conversation_turns
+        WHERE feedback IS NOT NULL
+          AND created_at > now() - interval '24 hours'
+          AND role = 'assistant'
+      `) as any[];
+
+      if (turns.length === 0) return 0;
+
+      let applied = 0;
+
+      for (const turn of turns) {
+        const feedback = turn.feedback as { rating: string } | null;
+        const snapshot = turn.context_snapshot as { memories?: string[] } | null;
+        if (!feedback) continue;
+
+        // Try to find memory IDs from the context snapshot
+        // The snapshot structure varies — look for any memory references
+        const memoryIds: string[] = [];
+        if (snapshot && typeof snapshot === "object") {
+          // Check if snapshot contains memory IDs directly
+          if (Array.isArray(snapshot.memories)) {
+            memoryIds.push(...snapshot.memories);
+          }
+        }
+
+        // If we found memory IDs, adjust them based on feedback
+        if (memoryIds.length > 0) {
+          if (feedback.rating === "unhelpful") {
+            await this.memoryService.adjustConfidence(memoryIds, -0.05);
+            applied += memoryIds.length;
+          } else if (feedback.rating === "helpful") {
+            await this.memoryService.adjustImportance(memoryIds, 0.05, 1.0);
+            applied += memoryIds.length;
+          }
+        }
+      }
+
+      if (applied > 0) {
+        console.log(`[synthesizer] Applied feedback signals to ${applied} memories`);
+      }
+      return applied;
+    } catch (err) {
+      console.error("[synthesizer] Feedback signals failed:", err instanceof Error ? err.message : err);
+      return 0;
+    }
   }
 
   /**

@@ -18,7 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(__dirname, "../../../.env");
 dotenv.config({ path: envPath });
 
-import { Agent, ContextEngine, type AIBackend, type ConversationMessage } from "@seneca/core";
+import { Agent, ContextEngine, SelfAssessor, type AIBackend, type ConversationMessage } from "@seneca/core";
 import { Bridge } from "@seneca/bridge";
 import { AnthropicBackend } from "@seneca/anthropic";
 import { getDb } from "@seneca/db";
@@ -101,7 +101,7 @@ async function main() {
   const entityBackfill = new EntityBackfill(db, backend, entityService);
   const memoryExtractor = new MemoryExtractor(memoryService, backend, entityService);
   const memoryProvider = new MemoryContextProvider(memoryService);
-  const memorySynthesizer = new MemorySynthesizer(memoryService, backend);
+  const memorySynthesizer = new MemorySynthesizer(memoryService, backend, db);
   const insightGenerator = new InsightGenerator(memoryService);
   console.log("  Memory: initialized (Voyage AI embeddings + entities + synthesizer + insights)");
 
@@ -284,6 +284,12 @@ async function main() {
   );
   console.log(`  Agent: initialized (via ${config.ANTHROPIC_API_KEY ? "Anthropic API" : "Bridge → Max subscription"})`);
 
+  // 8b. Self-Assessor (env-gated)
+  const selfAssessor = process.env.BODHI_SELF_ASSESS === "true"
+    ? new SelfAssessor(backend)
+    : null;
+  if (selfAssessor) console.log("  SelfAssessor: enabled (BODHI_SELF_ASSESS=true)");
+
   // 9. Initialize Telegram Bot
   const telegramBot = new TelegramBot({
     token: config.TELEGRAM_BOT_TOKEN,
@@ -431,7 +437,17 @@ async function main() {
     await conversationService.touchThread(threadId);
 
     // Extract memories async
-    memoryExtractor.extract(body.message, response.content).catch(() => {});
+    memoryExtractor.extract(body.message, response.content, threadId).catch(() => {});
+
+    // Self-assess async (don't block response)
+    if (selfAssessor) {
+      conversationService.getLastAssistantTurnId(threadId).then((turnId) => {
+        if (!turnId) return;
+        selfAssessor.assess(body.message, response.content).then((assessment) => {
+          conversationService.setSelfAssessment(turnId, assessment);
+        });
+      }).catch(() => {});
+    }
 
     return c.json({
       threadId,
@@ -779,7 +795,19 @@ async function main() {
       conversationService.touchThread(threadId!).catch(() => {});
 
       // Extract memories async (don't block SSE close)
-      memoryExtractor.extract(body.message, response.content).catch(() => {});
+      memoryExtractor.extract(body.message, response.content, threadId!).catch(() => {});
+
+      // Self-assess async
+      if (selfAssessor) {
+        setTimeout(async () => {
+          try {
+            const turnId = await conversationService.getLastAssistantTurnId(threadId!);
+            if (!turnId) return;
+            const assessment = await selfAssessor.assess(body.message, response.content);
+            await conversationService.setSelfAssessment(turnId, assessment);
+          } catch { /* non-fatal */ }
+        }, 2000); // Small delay to let turns persist first
+      }
     });
   });
 

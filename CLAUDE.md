@@ -67,7 +67,7 @@ Reflection (home), Chat, Search, Memories, Entities, Briefings, Timeline, Calend
 - **Telegram persistence**: Conversations persist via ConversationService with 30-min thread rotation
 - **Dashboard served from Hono**: In production, Vite builds dashboard into `apps/dashboard/dist`, Hono serves it via `serveStatic`. In dev, Vite proxies `/api/*` to `:4000`.
 - **Memory Quality**: `/api/memories/insights` (InsightGenerator SQL) and `/api/memories/quality` (stale/neglected/frequent analysis)
-- **MemorySynthesizer**: daily cron at 03:00 — dedup (>0.92 similarity), connect (clusters → AI synthesis), decay (stale -0.1 confidence), promote (frequent +0.1 importance)
+- **MemorySynthesizer**: daily cron at 03:00 — dedup (>0.92 similarity), connect (clusters → AI synthesis), decay (stale -0.1 confidence), promote (frequent +0.1 importance), auto-confirm pending memories >7d, apply feedback signals (unhelpful → -0.05 confidence, helpful → +0.05 importance)
 - **InsightGenerator**: pure SQL pattern detection — tag trends, stalled decisions, activity rates, neglected knowledge
 - **Cross-session reasoning**: MemoryExtractor.crossReference() detects recurring themes across sessions, auto-creates pattern memories tagged `["auto-synthesis", "cross-session"]`
 - **GoalContextProvider**: priority 9.5, injects active goals into every conversation. Flags stale goals (>14d check progress, >30d ask if still active)
@@ -77,6 +77,12 @@ Reflection (home), Chat, Search, Memories, Entities, Briefings, Timeline, Calend
 - **Landing page**: `/about` route, full-width (no sidebar), sample data for search demo (no real API calls), live status from `/api/status`
 - **Version**: Single source of truth in root `package.json`, injected via Vite `define` as `__APP_VERSION__`
 - **Consolidated commands**: Only 2 commands needed — `/session-start` and `/session-save`
+- **Feedback loops**: Thumbs up/down on chat messages stored as JSONB on `conversation_turns`. Dashboard ChatMessage shows hover-reveal buttons. Feedback signals feed into nightly synthesis.
+- **Memory confirmation gate**: MemoryExtractor stores memories as `pending`. User confirms/rejects in Memories dashboard. Synthesizer auto-confirms after 7 days. `retrieve()` only returns `confirmed` memories.
+- **Self-assessment**: Optional (env `BODHI_SELF_ASSESS=true`). SelfAssessor rates each response 1-5 via sonnet, stored as JSONB on conversation turns.
+- **Workflow engine**: `Agent.runWorkflow()` iterates steps, each step's output becomes context for the next via `<workflow>` XML blocks. 1M token context IS the state machine. Steps support dynamic prompts, conditional execution, model override, and pause/resume.
+- **Workflow definitions**: `packages/scheduler/src/workflows/` — morning-research (4 steps), deploy-verify (3 steps), weekly-synthesis (3 steps). Triggered via `/api/workflows/:id/run` or MCP `trigger_workflow` tool.
+- **Dashboard code-splitting**: All pages lazy-loaded via `React.lazy`. Main bundle ~290K.
 
 ## Dev Workflow
 
@@ -147,7 +153,7 @@ Pattern-based allow list for common commands: npm, git, curl to localhost, lsof/
 
 Exposes BODHI's memory and context to Claude Code sessions via MCP protocol.
 
-Tools: `search_memories`, `store_memory`, `store_session_summary`, `get_project_context`, `get_recent_conversations`, `get_todays_context`, `get_memory_stats`, `get_bodhi_status`, `generate_build_log`, `generate_weekly_digest`
+Tools: `search_memories`, `store_memory`, `store_session_summary`, `get_project_context`, `get_recent_conversations`, `get_todays_context`, `get_memory_stats`, `get_bodhi_status`, `generate_build_log`, `generate_weekly_digest`, `get_insights`, `extract_memories`, `get_workflows`, `trigger_workflow`
 
 ## Security Notes
 
@@ -192,3 +198,4 @@ npm run build -w @seneca/scheduler  # build single package
 20. Landing Page — Public /about page on Vercel, audience-focused messaging ✅
 21. Anthropic Backend — AIBackend alternative for users without Claude Max ✅
 22. Open Source — README, .env.example, setup wizard, CI, deploy templates ✅
+23. Self-Verification + Workflows — Feedback loops, memory confirmation gate, self-assessment, workflow engine, dashboard code-splitting ✅

@@ -6,6 +6,7 @@
 // ============================================================
 
 import cron, { type ScheduledTask } from "node-cron";
+import { readFile, writeFile } from "node:fs/promises";
 import type { Agent, ContextEngine } from "@seneca/core";
 import type { MemoryService } from "@seneca/memory";
 import type { MemorySynthesizer } from "@seneca/memory";
@@ -82,6 +83,7 @@ export interface SchedulerConfig {
   briefingStore?: BriefingStore | null;
   entityService?: EntityDataSource | null;
   workflows?: Map<string, import("@seneca/core").WorkflowDefinition>;
+  personaPath?: string;
 }
 
 interface JobRecord {
@@ -253,6 +255,13 @@ export class Scheduler {
       console.log("[scheduler] Started — morning 08:00, evening 18:00, weekly Sun 20:00 UB");
     }
 
+    // Persona refresh: 23:00 daily — update "Right Now" section from recent activity
+    this.tasks.push(
+      cron.schedule("0 23 * * *", () => this.refreshPersona(), {
+        timezone: tz,
+      })
+    );
+
     // Build digest: Monday 10:00 — auto-generate build-in-public content
     if (this.config.github) {
       this.tasks.push(
@@ -373,6 +382,84 @@ export class Scheduler {
       description: w.description,
       stepsCount: w.steps.length,
     }));
+  }
+
+  /**
+   * Auto-refresh the "Right Now" section in the persona file.
+   * Runs daily at 23:00 — summarizes today's activity from memories.
+   */
+  private async refreshPersona(): Promise<void> {
+    if (!this.config.personaPath) return;
+
+    try {
+      // Gather recent activity
+      const [recentMemories, goals] = await Promise.all([
+        this.config.memoryService.list(15),
+        this.config.memoryService.retrieve("active goals current focus", 5),
+      ]);
+
+      // Build context for AI summary
+      const recentText = recentMemories
+        .map((m) => `- [${m.type}] ${m.content}`)
+        .join("\n");
+      const goalText = goals
+        .filter((g) => g.type === "goal")
+        .map((g) => `- ${g.content}`)
+        .join("\n");
+
+      const today = new Date().toISOString().slice(0, 10);
+      const prompt = `<system>
+You update a persona file's "Right Now" section. Write a concise status block based on recent memories and goals.
+
+Format (keep it under 150 words):
+## Right Now (updated ${today})
+
+**Current focus:** [1-2 sentence summary of what's actively being built]
+
+**Active projects:**
+- [project 1 — brief status]
+- [project 2 — brief status]
+
+**Recent wins:** [2-3 concrete things accomplished recently]
+
+**What matters this week:** [1-2 priorities]
+
+Rules:
+- Be specific, not generic
+- Use facts from the memories, don't invent
+- If no clear info, keep it short
+- Do NOT use any tools
+- Output ONLY the section text, starting with "## Right Now"
+</system>
+
+Recent memories:
+${recentText}
+
+Goals:
+${goalText || "No explicit goals found"}`;
+
+      const task = await this.config.agent.chat(prompt);
+      const newSection = task.content.trim();
+
+      if (!newSection.startsWith("## Right Now")) {
+        console.error("[scheduler] Persona refresh: AI output didn't start with '## Right Now'");
+        return;
+      }
+
+      // Read current persona and replace the "Right Now" section
+      const persona = await readFile(this.config.personaPath, "utf-8");
+      const rightNowRegex = /## Right Now[\s\S]*?(?=\n---\n)/;
+
+      if (rightNowRegex.test(persona)) {
+        const updated = persona.replace(rightNowRegex, newSection + "\n");
+        await writeFile(this.config.personaPath, updated, "utf-8");
+        console.log(`[scheduler] Persona "Right Now" section refreshed for ${today}`);
+      } else {
+        console.log("[scheduler] No 'Right Now' section found in persona — skipping refresh");
+      }
+    } catch (err) {
+      console.error("[scheduler] Persona refresh failed:", err instanceof Error ? err.message : err);
+    }
   }
 
   /**

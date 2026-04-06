@@ -7,7 +7,7 @@
 import type { ContextProvider, ContextFragment } from "@seneca/core";
 import type { MemoryService } from "./service.js";
 
-const TOTAL_MEMORY_CAP = 12;
+const TOTAL_MEMORY_CAP = 25;
 
 export class MemoryContextProvider implements ContextProvider {
   name = "memory";
@@ -31,8 +31,8 @@ export class MemoryContextProvider implements ContextProvider {
 
     // Fetch semantic matches and recent high-importance memories in parallel
     const [semanticMemories, recentMemories] = await Promise.all([
-      this.memoryService.retrieve(message, 8),
-      this.memoryService.getRecentMemories(8),
+      this.memoryService.retrieve(message, 15),
+      this.memoryService.getRecentMemories(12),
     ]);
 
     // Dedup by ID — semantic results take priority (more relevant)

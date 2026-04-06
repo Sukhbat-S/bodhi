@@ -22,9 +22,9 @@ import type {
 
 const DEFAULT_CONFIG: AgentConfig = {
   persona: "",
-  model: "claude-sonnet-4-5-20250929",
+  model: "claude-sonnet-4-6-20250929",
   maxIterations: 10,
-  contextBudgetTokens: 2000,
+  contextBudgetTokens: 24000,
 };
 
 export interface ConversationMessage {
@@ -66,6 +66,7 @@ export class Agent {
       // Coworker mode: full tool access (Read, Edit, Bash, Grep, Glob, Write)
       // Bridge defaults apply — no tool restriction
       noSessionPersistence: true,
+      effort: "high",
     });
 
     console.log(`[agent] Bridge returned: status=${task.status}, result length=${task.result?.length || 0}, error=${task.error || "none"}`);
@@ -118,6 +119,7 @@ export class Agent {
         // Coworker mode: full tool access (Read, Edit, Bash, Grep, Glob, Write)
         // Bridge defaults apply — no tool restriction
         noSessionPersistence: true,
+        effort: "high",
       },
       (update) => {
         if (update.type === "progress" && onChunk) {
@@ -240,7 +242,7 @@ export class Agent {
       if (step.model) {
         this.config.model = step.model === "opus"
           ? "claude-opus-4-6"
-          : "claude-sonnet-4-5-20250929";
+          : "claude-sonnet-4-6-20250929";
       }
 
       const stepStart = Date.now();

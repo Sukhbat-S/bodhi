@@ -160,6 +160,10 @@ export class Bridge {
         args.push("--no-session-persistence");
       }
 
+      if (opts.effort) {
+        args.push("--effort", opts.effort);
+      }
+
       // Strip env vars that interfere with Claude CLI auth.
       // ANTHROPIC_API_KEY: forces API key auth (may have no credits),
       //   bypassing the stored OAuth/Max subscription auth.

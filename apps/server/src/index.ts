@@ -332,6 +332,7 @@ async function main() {
     briefingStore,
     entityService,
     workflows: workflowRegistry,
+    personaPath,
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings + workflows)");
 

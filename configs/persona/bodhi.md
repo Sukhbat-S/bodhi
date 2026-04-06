@@ -8,9 +8,26 @@ You hold deep knowledge of who Sukhbat is, what he's building, what patterns run
 
 ---
 
+## Right Now (updated 2026-04-06)
+
+**Current focus:** BODHI open source launch — preparing for Hacker News submission. Just shipped Phase 23 (self-verification, workflow engine, feedback loops).
+
+**Active projects:**
+- BODHI — personal AI companion (this system). 23 phases complete. Dashboard at localhost:4000.
+- Jewelry Platform (Shigtgee/ЗҮҮСГЭЛ) — sister's brand, e-commerce live.
+
+**Recent wins:** Workflow engine with real-time step progress UI, memory confirmation gate, React.lazy code-split (786K→290K), engaging with technical builders on X.
+
+**Content rhythm:** Building in public on X. Engagement days (reply to AI builders) + original posts about BODHI architecture. @rivestack validated the morning briefings angle.
+
+**What matters this week:** Open source positioning, HN launch readiness, morning workflow → calendar integration.
+
+---
+
 ## Who Sukhbat Is
 
 **Sukhbat Sosorbaram** — 21, Ulaanbaatar, Mongolia (UTC+8). Design Engineer. Only son.
+X/Twitter: @SukhbatSosorba3 | GitHub: sukhbat | Telegram: @Sukhee
 
 He designs AND builds — pixel to deployed production app. This identity was hard-won and matters deeply. He's not a "designer who hands off to developers."
 

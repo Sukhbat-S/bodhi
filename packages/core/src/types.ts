@@ -123,6 +123,7 @@ export interface BridgeOptions {
   sessionId?: string;
   resume?: string;
   noSessionPersistence?: boolean;
+  effort?: "low" | "medium" | "high" | "max";
 }
 
 // --- AI Backend (abstraction for Agent/Extractor to use Bridge) ---
@@ -137,7 +138,7 @@ export interface AIBackend {
 
 // --- Agent Config ---
 
-export type ModelId = "claude-opus-4-6" | "claude-sonnet-4-5-20250929";
+export type ModelId = "claude-opus-4-6" | "claude-sonnet-4-6-20250929" | "claude-sonnet-4-5-20250929";
 
 export interface AgentConfig {
   persona: string;

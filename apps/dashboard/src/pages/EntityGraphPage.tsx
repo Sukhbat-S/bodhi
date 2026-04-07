@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { useHandGesture } from '../hooks/useHandGesture';
 import { HandOverlay } from '../components/HandOverlay';
 import { GestureController } from '../components/GestureController';
+import { GestureIndicatorOverlay } from '../components/GestureIndicatorOverlay';
 // @ts-expect-error — d3-force-3d has no types
 import { forceSimulation, forceLink, forceManyBody, forceCenter } from 'd3-force-3d';
 
@@ -385,6 +386,7 @@ export default function EntityGraphPage() {
   const [flyTarget, setFlyTarget] = useState<[number, number, number] | null>(null);
   const [gestureEnabled, setGestureEnabled] = useState(false);
   const gestureState = useHandGesture(gestureEnabled);
+  const gestureOverlayRef = useRef<HTMLDivElement>(null);
 
   // Fetch data
   const loadGraph = useCallback(async () => {
@@ -570,6 +572,7 @@ export default function EntityGraphPage() {
                 nodes={nodes3D}
                 onHover={setHoveredId}
                 onClick={handleNodeClick}
+                overlayRef={gestureOverlayRef}
               />
             )}
           </Canvas>
@@ -580,6 +583,9 @@ export default function EntityGraphPage() {
             <span className="text-stone-600 text-sm">Loading constellation...</span>
           </div>
         )}
+
+        {/* Gesture directional indicators */}
+        {gestureEnabled && <GestureIndicatorOverlay ref={gestureOverlayRef} />}
 
         <DetailPanel entity={detail} onClose={() => { setDetail(null); setSelectedId(null); setFlyTarget(null); }} onNavigate={handleNavigate} />
 

@@ -153,3 +153,81 @@
 .ecosystem-canvas .react-flow__controls button svg {
   fill: #a8a29e;
 }
+
+/* ---- Gesture indicator overlay (data-attribute driven, zero re-renders) ---- */
+
+/* All indicators hidden by default */
+.gesture-overlay .g-indicator {
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  pointer-events: none;
+}
+
+/* Show rotate indicator */
+.gesture-overlay[data-gesture="rotate"] .g-rotate { opacity: 0.4; }
+.gesture-overlay[data-gesture="rotate-2h"] .g-rotate { opacity: 0.5; stroke-width: 3; }
+
+/* Direction transforms for rotate/pan arrows */
+.gesture-overlay[data-dir="left"] .g-rotate { transform: translate(-50%, -50%) rotate(180deg); }
+.gesture-overlay[data-dir="right"] .g-rotate { transform: translate(-50%, -50%) rotate(0deg); }
+.gesture-overlay[data-dir="up"] .g-rotate { transform: translate(-50%, -50%) rotate(-90deg); }
+.gesture-overlay[data-dir="down"] .g-rotate { transform: translate(-50%, -50%) rotate(90deg); }
+
+/* Show zoom indicators */
+.gesture-overlay[data-gesture="zoom-in"] .g-zoom-in,
+.gesture-overlay[data-gesture="zoom-2h-in"] .g-zoom-in { opacity: 0.4; }
+.gesture-overlay[data-gesture="zoom-out"] .g-zoom-out,
+.gesture-overlay[data-gesture="zoom-2h-out"] .g-zoom-out { opacity: 0.4; }
+
+/* Show pan indicator */
+.gesture-overlay[data-gesture="pan"] .g-pan { opacity: 0.4; }
+.gesture-overlay[data-dir="left"] .g-pan { transform: translate(-50%, -50%) rotate(180deg); }
+.gesture-overlay[data-dir="right"] .g-pan { transform: translate(-50%, -50%) rotate(0deg); }
+.gesture-overlay[data-dir="up"] .g-pan { transform: translate(-50%, -50%) rotate(-90deg); }
+.gesture-overlay[data-dir="down"] .g-pan { transform: translate(-50%, -50%) rotate(90deg); }
+
+/* Confirm flash */
+.gesture-overlay[data-gesture="confirm"] .g-confirm { animation: gesture-check-flash 600ms ease-out forwards; }
+
+/* Reset ripple */
+.gesture-overlay[data-gesture="reset"] .g-reset { animation: gesture-ripple 800ms ease-out forwards; }
+
+@keyframes gesture-rings-expand {
+  0% { transform: translate(-50%, -50%) scale(0.7); opacity: 0.5; }
+  100% { transform: translate(-50%, -50%) scale(1.3); opacity: 0; }
+}
+
+@keyframes gesture-rings-contract {
+  0% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.5; }
+  100% { transform: translate(-50%, -50%) scale(0.7); opacity: 0; }
+}
+
+@keyframes gesture-check-flash {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+  30% { opacity: 0.7; transform: translate(-50%, -50%) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes gesture-ripple {
+  0% { opacity: 0.4; transform: translate(-50%, -50%) scale(0); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2.5); }
+}
+
+/* Zoom ring animations */
+.gesture-overlay[data-gesture="zoom-in"] .g-zoom-ring,
+.gesture-overlay[data-gesture="zoom-2h-in"] .g-zoom-ring {
+  animation: gesture-rings-expand 1s ease-out infinite;
+}
+.gesture-overlay[data-gesture="zoom-in"] .g-zoom-ring:nth-child(2),
+.gesture-overlay[data-gesture="zoom-2h-in"] .g-zoom-ring:nth-child(2) {
+  animation-delay: 0.3s;
+}
+
+.gesture-overlay[data-gesture="zoom-out"] .g-zoom-ring,
+.gesture-overlay[data-gesture="zoom-2h-out"] .g-zoom-ring {
+  animation: gesture-rings-contract 1s ease-out infinite;
+}
+.gesture-overlay[data-gesture="zoom-out"] .g-zoom-ring:nth-child(2),
+.gesture-overlay[data-gesture="zoom-2h-out"] .g-zoom-ring:nth-child(2) {
+  animation-delay: 0.3s;
+}

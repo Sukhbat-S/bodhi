@@ -1,11 +1,16 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
-import rootPkg from "../../package.json";
+// Root package.json may not exist on Vercel (subdirectory deploy)
+let appVersion = "0.9.0";
+try {
+  const rootPkg = await import("../../package.json");
+  appVersion = rootPkg.version || appVersion;
+} catch { /* Vercel subdirectory deploy — use fallback */ }
 
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(rootPkg.version),
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [
     react(),

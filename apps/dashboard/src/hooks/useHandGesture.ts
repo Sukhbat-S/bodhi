@@ -79,14 +79,14 @@ function classifyGesture(landmarks: Landmark[], prevPalmX: number): { gesture: G
   // Pinch distance: thumb tip to index tip
   const pinchDistance = dist(landmarks[THUMB_TIP], landmarks[INDEX_TIP]);
 
-  // Wave detection: large horizontal palm movement
+  // Wave detection: large horizontal palm movement + fingers must be extended (open hand wave)
   const palmDeltaX = Math.abs(palmX - prevPalmX);
-  if (palmDeltaX > 0.08) {
+  if (palmDeltaX > 0.15 && indexOut && middleOut && ringOut && pinkyOut) {
     return { gesture: "wave", palmPosition, pinchDistance };
   }
 
   // Pinch: thumb and index close together
-  if (pinchDistance < 0.06) {
+  if (pinchDistance < 0.055) {
     return { gesture: "pinch", palmPosition, pinchDistance };
   }
 
@@ -122,6 +122,13 @@ export function useHandGesture(enabled: boolean) {
   const animFrameRef = useRef<number>(0);
   const prevPalmXRef = useRef(0.5);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Gesture debounce — prevents fluttering between similar gestures
+  const stableGesture = useRef<GestureType>("none");
+  const candidateGesture = useRef<GestureType>("none");
+  const candidateFrames = useRef(0);
+  const DEBOUNCE_FRAMES = 3;       // ~100ms at 30fps
+  const DEBOUNCE_NONE_FRAMES = 5;  // slower transition to "none" (prevents dropout flicker)
 
   // Create video element for webcam
   const getVideo = useCallback(() => {
@@ -205,11 +212,42 @@ export function useHandGesture(enabled: boolean) {
           const primary = hands[0];
           prevPalmXRef.current = primary.palmPosition.x;
 
+          // Debounce: stabilize gesture before emitting
+          const rawGesture = primary.gesture;
+          let emitGesture: GestureType;
+
+          if (rawGesture === "thumbsup") {
+            // Thumbsup bypasses debounce (has its own cooldown)
+            emitGesture = rawGesture;
+            stableGesture.current = rawGesture;
+            candidateFrames.current = 0;
+          } else if (rawGesture === stableGesture.current) {
+            // Same as stable — keep it, reset candidate
+            emitGesture = stableGesture.current;
+            candidateGesture.current = rawGesture;
+            candidateFrames.current = 0;
+          } else if (rawGesture === candidateGesture.current) {
+            // Same as candidate — increment frames
+            candidateFrames.current++;
+            const threshold = rawGesture === "none" ? DEBOUNCE_NONE_FRAMES : DEBOUNCE_FRAMES;
+            if (candidateFrames.current >= threshold) {
+              stableGesture.current = rawGesture;
+              emitGesture = rawGesture;
+            } else {
+              emitGesture = stableGesture.current;
+            }
+          } else {
+            // New candidate
+            candidateGesture.current = rawGesture;
+            candidateFrames.current = 1;
+            emitGesture = stableGesture.current;
+          }
+
           // Merge all landmarks for overlay drawing
           const allLandmarks = hands.flatMap((h) => h.landmarks);
 
           setState({
-            gesture: primary.gesture,
+            gesture: emitGesture,
             landmarks: allLandmarks,
             palmPosition: primary.palmPosition,
             pinchDistance: primary.pinchDistance,
@@ -219,7 +257,21 @@ export function useHandGesture(enabled: boolean) {
             handCount: hands.length,
           });
         } else {
-          setState((prev) => ({ ...prev, gesture: "none", landmarks: [], isActive: false, confidence: 0, hands: [], handCount: 0 }));
+          // Hand lost — debounce transition to none
+          candidateGesture.current = "none";
+          candidateFrames.current++;
+          if (candidateFrames.current >= DEBOUNCE_NONE_FRAMES) {
+            stableGesture.current = "none";
+          }
+          setState((prev) => ({
+            ...prev,
+            gesture: stableGesture.current,
+            landmarks: [],
+            isActive: stableGesture.current !== "none",
+            confidence: 0,
+            hands: [],
+            handCount: 0,
+          }));
         }
 
         animFrameRef.current = requestAnimationFrame(detect);

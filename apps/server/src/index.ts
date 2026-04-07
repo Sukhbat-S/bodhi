@@ -40,7 +40,7 @@ import { VercelService, VercelContextProvider } from "@seneca/vercel";
 import { SupabaseAwarenessService, SupabaseAwarenessProvider } from "@seneca/supabase-awareness";
 import { MetaService } from "@seneca/social";
 import { desc } from "drizzle-orm";
-import { briefings } from "@seneca/db";
+import { briefings, activeSessions as activeSessionsTable, sessionMessages as sessionMessagesTable } from "@seneca/db";
 import { loadConfig } from "./config.js";
 import { ConversationService } from "./services/conversation.js";
 import { PushService } from "./services/push.js";
@@ -881,6 +881,96 @@ async function main() {
       body.workflowId
     );
     return c.json(result);
+  });
+
+  // API: Active Sessions (DB-backed, survives server restarts)
+  // Auto-expire sessions (2h) and messages (1h)
+  setInterval(async () => {
+    try {
+      const sessionCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      await db.delete(activeSessionsTable).where(sql`${activeSessionsTable.lastPingAt} < ${sessionCutoff}`);
+      const msgCutoff = new Date(Date.now() - 60 * 60 * 1000);
+      await db.delete(sessionMessagesTable).where(sql`${sessionMessagesTable.createdAt} < ${msgCutoff}`);
+    } catch { /* silent */ }
+  }, 60_000);
+
+  app.get("/api/sessions/active", async (c) => {
+    const sessions = await db.select().from(activeSessionsTable).orderBy(activeSessionsTable.startedAt);
+    return c.json({ sessions });
+  });
+
+  app.post("/api/sessions/active", async (c) => {
+    const body = await c.req.json();
+    const id = body.id || crypto.randomUUID();
+    const now = new Date();
+    // Upsert: if same ID exists, update it instead of duplicating
+    await db.insert(activeSessionsTable)
+      .values({ id, project: body.project || "unknown", description: body.description || "", startedAt: now, lastPingAt: now })
+      .onConflictDoUpdate({
+        target: activeSessionsTable.id,
+        set: { project: body.project || "unknown", description: body.description || "", lastPingAt: now },
+      });
+    return c.json({ id, registered: true });
+  });
+
+  app.post("/api/sessions/active/:id/ping", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
+    const updates: Record<string, unknown> = { lastPingAt: new Date() };
+    if (body.description) updates.description = body.description;
+    if (body.currentFile !== undefined) updates.currentFile = body.currentFile;
+    await db.update(activeSessionsTable)
+      .set(updates)
+      .where(sql`${activeSessionsTable.id} = ${id}`);
+    return c.json({ pinged: true });
+  });
+
+  app.delete("/api/sessions/active/:id", async (c) => {
+    const id = c.req.param("id");
+    await db.delete(activeSessionsTable).where(sql`${activeSessionsTable.id} = ${id}`);
+    return c.json({ deregistered: true });
+  });
+
+  // Inter-session messaging
+  app.post("/api/sessions/messages", async (c) => {
+    let body: Record<string, unknown>;
+    try { body = await c.req.json(); } catch { body = {}; }
+    if (!body.from || !body.message) {
+      return c.json({ error: "from and message are required" }, 400);
+    }
+    if (typeof body.message === "string" && body.message.length > 2000) {
+      return c.json({ error: "message too long (max 2000 chars)" }, 400);
+    }
+    await db.insert(sessionMessagesTable).values({
+      fromSession: String(body.from),
+      toSession: body.to ? String(body.to) : null,
+      message: String(body.message),
+    });
+    return c.json({ sent: true });
+  });
+
+  app.get("/api/sessions/messages", async (c) => {
+    const since = c.req.query("since");
+    const sessionId = c.req.query("for");
+    const whereClause = since
+      ? sql`${sessionMessagesTable.createdAt} > ${new Date(since)}`
+      : sql`1=1`;
+    const messages = await db.select().from(sessionMessagesTable)
+      .where(whereClause)
+      .orderBy(sessionMessagesTable.createdAt);
+    const filtered = sessionId
+      ? messages.filter((m) => !m.toSession || m.toSession === sessionId)
+      : messages;
+    return c.json({ messages: filtered });
+  });
+
+  // File ownership — which sessions are editing which files
+  app.get("/api/sessions/files", async (c) => {
+    const sessions = await db.select().from(activeSessionsTable);
+    const files = sessions
+      .filter((s) => s.currentFile)
+      .map((s) => ({ session: s.id, project: s.project, file: s.currentFile, since: s.lastPingAt }));
+    return c.json({ files });
   });
 
   // API: Workflows

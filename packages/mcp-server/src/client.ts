@@ -585,6 +585,110 @@ export async function generateWeeklyDigest(): Promise<string> {
 }
 
 // --------------------------------------------------
+// Active Sessions
+// --------------------------------------------------
+
+export async function registerActiveSession(
+  project: string,
+  description: string,
+  id?: string,
+): Promise<string> {
+  const result = await bodhiFetch<{ id: string; registered: boolean }>(
+    "/api/sessions/active",
+    {
+      method: "POST",
+      body: JSON.stringify({ project, description, id }),
+    },
+  );
+
+  if (!result.ok) return result.error;
+  return `Session registered (id: ${result.data.id}). Dashboard will show this as active work.`;
+}
+
+export async function deregisterActiveSession(id: string): Promise<string> {
+  const result = await bodhiFetch<{ deregistered: boolean }>(
+    `/api/sessions/active/${id}`,
+    { method: "DELETE" },
+  );
+
+  if (!result.ok) return result.error;
+  return "Session deregistered.";
+}
+
+export async function getActiveSessions(): Promise<string> {
+  const result = await bodhiFetch<{
+    sessions: { id: string; project: string; description: string; currentFile?: string; startedAt: string }[];
+  }>("/api/sessions/active");
+
+  if (!result.ok) return result.error;
+
+  const { sessions } = result.data;
+  if (sessions.length === 0) return "No active sessions.";
+
+  return sessions
+    .map((s) => {
+      const file = s.currentFile ? ` [editing: ${s.currentFile}]` : "";
+      return `- [${s.project}] ${s.description}${file} (since ${timeAgo(new Date(s.startedAt))})`;
+    })
+    .join("\n");
+}
+
+export async function sendSessionMessage(
+  from: string,
+  message: string,
+  to?: string,
+): Promise<string> {
+  const result = await bodhiFetch<{ sent: boolean }>("/api/sessions/messages", {
+    method: "POST",
+    body: JSON.stringify({ from, message, to }),
+  });
+
+  if (!result.ok) return result.error;
+  return to ? `Message sent to ${to}.` : "Message broadcast to all sessions.";
+}
+
+export async function getSessionMessages(
+  sessionId?: string,
+  since?: string,
+): Promise<string> {
+  const params = new URLSearchParams();
+  if (sessionId) params.set("for", sessionId);
+  if (since) params.set("since", since);
+  const qs = params.toString();
+
+  const result = await bodhiFetch<{
+    messages: { fromSession: string; toSession: string | null; message: string; createdAt: string }[];
+  }>(`/api/sessions/messages${qs ? `?${qs}` : ""}`);
+
+  if (!result.ok) return result.error;
+
+  const { messages } = result.data;
+  if (messages.length === 0) return "No messages.";
+
+  return messages
+    .map((m) => {
+      const target = m.toSession ? ` → ${m.toSession}` : " (broadcast)";
+      return `[${m.fromSession}${target}] ${m.message} (${timeAgo(new Date(m.createdAt))})`;
+    })
+    .join("\n");
+}
+
+export async function checkFileConflicts(): Promise<string> {
+  const result = await bodhiFetch<{
+    files: { session: string; project: string; file: string; since: string }[];
+  }>("/api/sessions/files");
+
+  if (!result.ok) return result.error;
+
+  const { files } = result.data;
+  if (files.length === 0) return "No files currently being edited by any session.";
+
+  return "Files currently being edited:\n" + files
+    .map((f) => `- ${f.file} by [${f.session}] (${f.project})`)
+    .join("\n");
+}
+
+// --------------------------------------------------
 // Helpers
 // --------------------------------------------------
 

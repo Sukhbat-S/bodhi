@@ -538,6 +538,45 @@ export function generateWeeklyDigest() {
   );
 }
 
+// --- Active Sessions ---
+
+export interface ActiveSession {
+  id: string;
+  project: string;
+  description: string;
+  currentFile: string | null;
+  startedAt: string;
+  lastPingAt: string;
+}
+
+export function getActiveSessions() {
+  return request<{ sessions: ActiveSession[] }>("/sessions/active");
+}
+
+export interface SessionMessage {
+  id: string;
+  fromSession: string;
+  toSession: string | null;
+  message: string;
+  createdAt: string;
+}
+
+export function getSessionMessages(since?: string) {
+  const qs = since ? `?since=${encodeURIComponent(since)}` : "";
+  return request<{ messages: SessionMessage[] }>(`/sessions/messages${qs}`);
+}
+
+export interface FileOwnership {
+  session: string;
+  project: string;
+  file: string;
+  since: string;
+}
+
+export function getFileOwnerships() {
+  return request<{ files: FileOwnership[] }>("/sessions/files");
+}
+
 // --- Chat ---
 
 export interface ChatMessage {

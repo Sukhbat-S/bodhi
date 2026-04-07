@@ -2,7 +2,7 @@
 name: session-save
 description: Commit work + extract session knowledge into BODHI's long-term memory. The only end-of-session command you need.
 disable-model-invocation: true
-allowed-tools: Bash(git *), mcp__bodhi__search_memories, mcp__bodhi__store_memory, mcp__bodhi__store_session_summary
+allowed-tools: Bash(git *), mcp__bodhi__search_memories, mcp__bodhi__store_memory, mcp__bodhi__store_session_summary, mcp__bodhi__deregister_active_session
 ---
 
 Commit any uncommitted work, then analyze the ENTIRE session transcript and extract knowledge for BODHI's long-term memory.
@@ -31,6 +31,12 @@ If the session involved changes to the jewelry-platform codebase:
    - Whether `tsc` still passes
 4. If quality improved, store a "pattern" memory about what technique was used
 5. If quality regressed, flag it in the session pending items
+
+## Step 0.9: Deregister Active Session
+
+If an active session was registered during `/session-start`, call `deregister_active_session` with the session ID. This removes the session from the dashboard's "Live Sessions" display.
+
+If you don't have the session ID, skip this step — sessions auto-expire after 2 hours anyway.
 
 ## Step 1: Identify Context
 

@@ -45,6 +45,15 @@ Determine the current project from the working directory:
 - `/Users/macbookpro/Documents/shigtgee/` → project: "jewelry" or "shigtgee"
 - Other paths → ask the user what project they're working on
 
+## Step 1b: Register Active Session
+
+Call `register_active_session` with:
+- `project`: the detected project name
+- `description`: a short description of the session (e.g., "Dashboard improvements" or "Jewelry platform polish")
+- `id`: use a stable identifier like `{project}-{terminal-tab}` so re-running session-start in the same tab updates rather than duplicates
+
+Save the returned session ID so `/session-save` can deregister it later. Store it as: "Active session ID: {id}" in your working context.
+
 ## Step 2: Load Context
 
 Run these searches in parallel:
@@ -53,6 +62,9 @@ Run these searches in parallel:
 2. **Pending items**: `search_memories("pending {project}")` — what's left to do
 3. **Project context**: `get_project_context("{project}")` — key memories for this project
 4. **Today's context**: `get_todays_context()` — calendar, emails, BODHI status
+5. **Active sessions**: `get_active_sessions()` — what other tabs are working on
+6. **File conflicts**: `check_file_conflicts()` — which files are being edited by other sessions
+7. **Session messages**: `get_session_messages()` — any coordination messages from other sessions
 
 ## Step 3: Present Briefing
 
@@ -73,6 +85,10 @@ BODHI status:
 - [2-3 most relevant decisions/patterns for this project]
 
 **Today**: [calendar events, unread emails if relevant]
+
+**Other active sessions**: [list any parallel sessions, or "none"]
+**File conflicts**: [warn if another session is editing files you might touch]
+**Messages from other sessions**: [show any coordination messages]
 
 Ready to go. What are we working on?
 ```

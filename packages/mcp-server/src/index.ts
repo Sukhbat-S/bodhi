@@ -30,6 +30,12 @@ import {
   generateWeeklyDigest,
   getWorkflows,
   triggerWorkflow,
+  registerActiveSession,
+  deregisterActiveSession,
+  getActiveSessions,
+  sendSessionMessage,
+  getSessionMessages,
+  checkFileConflicts,
 } from "./client.js";
 
 // Create MCP server
@@ -321,6 +327,97 @@ server.tool(
   },
   async ({ workflow_id }) => {
     const result = await triggerWorkflow(workflow_id);
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: register_active_session
+// --------------------------------------------------
+server.tool(
+  "register_active_session",
+  "Register an active Claude Code session with BODHI so the dashboard shows what you're currently working on. Call this at the start of each session.",
+  {
+    project: z.string().describe("Project name (e.g., 'bodhi', 'jewelry-platform')"),
+    description: z.string().describe("What you're working on (e.g., 'Dashboard home page redesign')"),
+    id: z.string().optional().describe("Optional session ID (auto-generated if omitted)"),
+  },
+  async ({ project, description, id }) => {
+    const result = await registerActiveSession(project, description, id);
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: deregister_active_session
+// --------------------------------------------------
+server.tool(
+  "deregister_active_session",
+  "Deregister an active session when done. Call this during /session-save.",
+  {
+    id: z.string().describe("Session ID to deregister"),
+  },
+  async ({ id }) => {
+    const result = await deregisterActiveSession(id);
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: get_active_sessions
+// --------------------------------------------------
+server.tool(
+  "get_active_sessions",
+  "List all currently active Claude Code sessions across all terminals/tabs.",
+  {},
+  async () => {
+    const result = await getActiveSessions();
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: send_session_message
+// --------------------------------------------------
+server.tool(
+  "send_session_message",
+  "Send a message to other Claude Code sessions via BODHI. Use to coordinate: warn about file conflicts, share decisions, or broadcast status updates. Messages expire after 1 hour.",
+  {
+    from: z.string().describe("Your session ID (e.g., 'bodhi-main')"),
+    message: z.string().describe("Message content (e.g., 'Refactoring TryOnModal — don't edit it')"),
+    to: z.string().optional().describe("Target session ID. Omit to broadcast to all sessions."),
+  },
+  async ({ from, message, to }) => {
+    const result = await sendSessionMessage(from, message, to);
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: get_session_messages
+// --------------------------------------------------
+server.tool(
+  "get_session_messages",
+  "Read messages from other Claude Code sessions. Check this at session start and periodically to stay coordinated.",
+  {
+    session_id: z.string().optional().describe("Your session ID to filter messages addressed to you"),
+    since: z.string().optional().describe("ISO timestamp — only get messages after this time"),
+  },
+  async ({ session_id, since }) => {
+    const result = await getSessionMessages(session_id, since);
+    return { content: [{ type: "text" as const, text: result }] };
+  },
+);
+
+// --------------------------------------------------
+// Tool: check_file_conflicts
+// --------------------------------------------------
+server.tool(
+  "check_file_conflicts",
+  "See which files are being edited by other Claude Code sessions right now. Check before editing shared files to avoid conflicts.",
+  {},
+  async () => {
+    const result = await checkFileConflicts();
     return { content: [{ type: "text" as const, text: result }] };
   },
 );

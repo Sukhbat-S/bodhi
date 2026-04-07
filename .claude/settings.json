@@ -30,6 +30,10 @@
           {
             "type": "command",
             "command": "cd /Users/macbookpro/Documents/bodhi && npx tsc --noEmit --pretty 2>&1 | tail -5 || true"
+          },
+          {
+            "type": "command",
+            "command": "NOW=$(date +%s); PREV=$(cat /tmp/bodhi-ping-ts 2>/dev/null || echo 0); if [ $((NOW - PREV)) -gt 30 ]; then echo $NOW > /tmp/bodhi-ping-ts; FILE=$(cat /tmp/bodhi-current-file 2>/dev/null || echo ''); curl -s -X POST http://localhost:4000/api/sessions/active/bodhi-main/ping -H 'Content-Type: application/json' -d \"{\\\"currentFile\\\":\\\"$FILE\\\"}\" > /dev/null 2>&1; fi; true"
           }
         ]
       }

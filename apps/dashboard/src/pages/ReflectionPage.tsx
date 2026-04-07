@@ -22,6 +22,7 @@ import {
   getActiveSessions,
   getSessionMessages,
   getFileOwnerships,
+  subscribeSessionStream,
   type StatusResponse,
   type ActiveSession,
   type SessionMessage,
@@ -241,16 +242,56 @@ export default function ReflectionPage() {
     return () => { cancelled = true; clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, []);
 
-  // Poll active sessions + messages + files every 30s
+  // Real-time session updates via SSE, with polling fallback
   useEffect(() => {
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let sseCleanup: (() => void) | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectDelay = 1000;
+
     const poll = () => {
       getActiveSessions().then((r) => setActiveSessions(r.sessions)).catch(() => {});
       getSessionMessages().then((r) => setSessionMessages(r.messages)).catch(() => {});
       getFileOwnerships().then((r) => setFileOwnerships(r.files)).catch(() => {});
     };
-    poll(); // immediate first fetch
-    const interval = setInterval(poll, 30_000);
-    return () => clearInterval(interval);
+
+    const startPolling = () => { if (!pollInterval) { poll(); pollInterval = setInterval(poll, 30_000); } };
+    const stopPolling = () => { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } };
+
+    const connectSSE = () => {
+      sseCleanup = subscribeSessionStream({
+        onInit: ({ sessions, messages, files }) => {
+          setActiveSessions(sessions);
+          setSessionMessages(messages);
+          setFileOwnerships(files);
+          stopPolling();
+          reconnectDelay = 1000;
+        },
+        onSessionChange: () => {
+          // Re-fetch full session + file state on any change (simple, correct)
+          getActiveSessions().then((r) => setActiveSessions(r.sessions)).catch(() => {});
+          getFileOwnerships().then((r) => setFileOwnerships(r.files)).catch(() => {});
+        },
+        onMessageSent: ({ message }) => {
+          setSessionMessages((prev) => [...prev, message]);
+        },
+        onDisconnect: () => {
+          startPolling();
+          reconnectTimer = setTimeout(() => {
+            connectSSE();
+            reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+          }, reconnectDelay);
+        },
+      });
+    };
+
+    connectSSE();
+
+    return () => {
+      if (sseCleanup) sseCleanup();
+      stopPolling();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
   }, []);
 
   // Keyboard shortcut: / focuses quick input

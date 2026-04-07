@@ -7,6 +7,11 @@ allowed-tools: Bash(git *), mcp__bodhi__search_memories, mcp__bodhi__store_memor
 
 Commit any uncommitted work, then analyze the ENTIRE session transcript and extract knowledge for BODHI's long-term memory.
 
+## Context: Current Memory Quality
+!`curl -s localhost:4000/api/memories/quality 2>/dev/null | head -c 500 || echo "Memory quality endpoint unavailable"`
+
+Use this quality data to avoid storing duplicates or low-value memories. If stale/neglected counts are high, prioritize archiving over new extraction.
+
 ## Step 0: Commit Uncommitted Work
 
 Check if there are uncommitted changes:

@@ -9,6 +9,7 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
+import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -884,6 +885,10 @@ async function main() {
   });
 
   // API: Active Sessions (DB-backed, survives server restarts)
+  // Event bus for real-time SSE push to dashboard
+  const sessionBus = new EventEmitter();
+  sessionBus.setMaxListeners(50);
+
   // Auto-expire sessions (2h) and messages (1h)
   setInterval(async () => {
     try {
@@ -910,6 +915,7 @@ async function main() {
         target: activeSessionsTable.id,
         set: { project: body.project || "unknown", description: body.description || "", lastPingAt: now },
       });
+    sessionBus.emit("event", { type: "session:registered", session: { id, project: body.project || "unknown", description: body.description || "" } });
     return c.json({ id, registered: true });
   });
 
@@ -922,12 +928,14 @@ async function main() {
     await db.update(activeSessionsTable)
       .set(updates)
       .where(sql`${activeSessionsTable.id} = ${id}`);
+    sessionBus.emit("event", { type: "session:pinged", sessionId: id, currentFile: body.currentFile ?? null });
     return c.json({ pinged: true });
   });
 
   app.delete("/api/sessions/active/:id", async (c) => {
     const id = c.req.param("id");
     await db.delete(activeSessionsTable).where(sql`${activeSessionsTable.id} = ${id}`);
+    sessionBus.emit("event", { type: "session:deregistered", sessionId: id });
     return c.json({ deregistered: true });
   });
 
@@ -941,10 +949,14 @@ async function main() {
     if (typeof body.message === "string" && body.message.length > 2000) {
       return c.json({ error: "message too long (max 2000 chars)" }, 400);
     }
-    await db.insert(sessionMessagesTable).values({
+    const [inserted] = await db.insert(sessionMessagesTable).values({
       fromSession: String(body.from),
       toSession: body.to ? String(body.to) : null,
       message: String(body.message),
+    }).returning();
+    sessionBus.emit("event", {
+      type: "message:sent",
+      message: { id: inserted.id, from: inserted.fromSession, to: inserted.toSession, message: inserted.message, createdAt: inserted.createdAt.toISOString() },
     });
     return c.json({ sent: true });
   });
@@ -971,6 +983,37 @@ async function main() {
       .filter((s) => s.currentFile)
       .map((s) => ({ session: s.id, project: s.project, file: s.currentFile, since: s.lastPingAt }));
     return c.json({ files });
+  });
+
+  // SSE stream — real-time session/message updates to dashboard
+  app.get("/api/sessions/stream", (c) => {
+    return streamSSE(c, async (stream) => {
+      // Send initial snapshot
+      const sessions = await db.select().from(activeSessionsTable).orderBy(activeSessionsTable.startedAt);
+      const messages = await db.select().from(sessionMessagesTable).orderBy(sessionMessagesTable.createdAt);
+      const files = sessions.filter((s) => s.currentFile).map((s) => ({ session: s.id, project: s.project, file: s.currentFile, since: s.lastPingAt }));
+      await stream.writeSSE({ event: "init", data: JSON.stringify({ sessions, messages, files }) });
+
+      // Forward bus events to this SSE client
+      const onEvent = async (event: Record<string, unknown>) => {
+        try { await stream.writeSSE({ event: event.type as string, data: JSON.stringify(event) }); } catch { /* disconnected */ }
+      };
+      sessionBus.on("event", onEvent);
+
+      // Heartbeat keeps proxies from closing
+      const heartbeat = setInterval(async () => {
+        try { await stream.writeSSE({ event: "heartbeat", data: "" }); } catch { clearInterval(heartbeat); }
+      }, 30_000);
+
+      // Block until client disconnects
+      await new Promise<void>((resolve) => {
+        stream.onAbort(() => {
+          sessionBus.off("event", onEvent);
+          clearInterval(heartbeat);
+          resolve();
+        });
+      });
+    });
   });
 
   // API: Workflows

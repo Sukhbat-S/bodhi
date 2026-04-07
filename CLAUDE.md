@@ -54,7 +54,10 @@ Reflection (home), Chat, Search, Memories, Entities, Briefings, Timeline, Calend
 - **AI Backend**: Agent uses `AIBackend` interface. Two implementations: `Bridge` (Claude Code CLI, $0 with Max) and `AnthropicBackend` (API, for users without Max). Server selects based on `AI_BACKEND` env var.
 - Memory uses Voyage AI (`voyage-4-lite`) for embeddings, pgvector for cosine similarity search
 - **Memory types**: fact, decision, pattern, preference, event, goal
-- **Context providers** (priority order): memory=10, goals=9.5, projects=9, entities=8, notion=8, gmail/calendar=7, github/vercel/supabase=6. Keyword-based relevance.
+- **Context providers** (priority order): memory=10, goals=9.5, projects=9, entities=8, notion=8, gmail/calendar=7, github/vercel/supabase=6. **Intent-aware**: ContextEngine classifies messages (quick/code/memory/full) and only fires relevant providers with dynamic token budgets.
+- **Background watcher**: KAIROS-lite runs every 5min — alerts on Vercel deploy errors, new GitHub PRs, Gmail inbox spikes via Telegram.
+- **Smart synthesis**: MemorySynthesizer checks every 4h with 3-gate trigger (12h since last + 3 new memories + no lock) instead of fixed 03:00 cron.
+- **Ultraplan**: Available on Max 20x. Use `/ultraplan` for large refactors — plans in cloud while terminal stays free. Supports inline comments, section-level review, execute on web or teleport back to terminal.
 - Telegram bot: single-user only, `allowedUserId` from env
 - Dashboard proxies `/api/*` to `:4000` via Vite config
 - Scheduler: non-blocking start (Telegraf `launch()` never resolves)
@@ -67,7 +70,7 @@ Reflection (home), Chat, Search, Memories, Entities, Briefings, Timeline, Calend
 - **Telegram persistence**: Conversations persist via ConversationService with 30-min thread rotation
 - **Dashboard served from Hono**: In production, Vite builds dashboard into `apps/dashboard/dist`, Hono serves it via `serveStatic`. In dev, Vite proxies `/api/*` to `:4000`.
 - **Memory Quality**: `/api/memories/insights` (InsightGenerator SQL) and `/api/memories/quality` (stale/neglected/frequent analysis)
-- **MemorySynthesizer**: daily cron at 03:00 — dedup (>0.92 similarity), connect (clusters → AI synthesis), decay (stale -0.1 confidence), promote (frequent +0.1 importance), auto-confirm pending memories >7d, apply feedback signals (unhelpful → -0.05 confidence, helpful → +0.05 importance)
+- **MemorySynthesizer**: every 4h (gated by `shouldRun()`: 12h since last + 3 new memories + no concurrent lock) — dedup (>0.92 similarity), connect (clusters → AI synthesis), decay (stale -0.1 confidence), promote (frequent +0.1 importance), auto-confirm pending memories >7d, apply feedback signals (unhelpful → -0.05 confidence, helpful → +0.05 importance)
 - **InsightGenerator**: pure SQL pattern detection — tag trends, stalled decisions, activity rates, neglected knowledge
 - **Cross-session reasoning**: MemoryExtractor.crossReference() detects recurring themes across sessions, auto-creates pattern memories tagged `["auto-synthesis", "cross-session"]`
 - **GoalContextProvider**: priority 9.5, injects active goals into every conversation. Flags stale goals (>14d check progress, >30d ask if still active)

@@ -36,10 +36,12 @@ interface CalendarDataSource {
 
 interface GitHubDataSource {
   getBriefingSummary(): Promise<string>;
+  getActivity?(): Promise<{ commits: unknown[]; prs: Array<{ title: string; state: string }>; issues: unknown[] }>;
 }
 
 interface VercelDataSource {
   getBriefingSummary(): Promise<string>;
+  getDeployments?(limit: number): Promise<Array<{ id: string; state: string; name: string; createdAt: number }>>;
 }
 
 interface SupabaseDataSource {
@@ -243,14 +245,19 @@ export class Scheduler {
       );
     }
 
-    // Memory synthesis: daily at 03:00 (dedup, connect, decay, promote)
+    // Memory synthesis: every 4h, gated by shouldRun() (12h + 3 sessions + no lock)
     if (this.config.synthesizer) {
       this.tasks.push(
-        cron.schedule("0 3 * * *", () => this.runSynthesis(), {
-          timezone: tz,
-        })
+        cron.schedule("0 */4 * * *", async () => {
+          const gate = await this.config.synthesizer!.shouldRun();
+          if (!gate.run) {
+            console.log(`[scheduler] Synthesis skipped — ${gate.reason}`);
+            return;
+          }
+          this.runSynthesis();
+        }, { timezone: tz })
       );
-      console.log("[scheduler] Started — morning 08:00, evening 18:00, weekly Sun 20:00, synthesis 03:00 UB");
+      console.log("[scheduler] Started — morning 08:00, evening 18:00, weekly Sun 20:00, synthesis every 4h (gated) UB");
     } else {
       console.log("[scheduler] Started — morning 08:00, evening 18:00, weekly Sun 20:00 UB");
     }
@@ -261,6 +268,14 @@ export class Scheduler {
         timezone: tz,
       })
     );
+
+    // Background watcher: every 5 min — KAIROS-lite event monitoring
+    if (this.config.vercel || this.config.github || this.config.gmail) {
+      this.tasks.push(
+        cron.schedule("*/5 * * * *", () => this.watchLoop(), { timezone: tz })
+      );
+      console.log("[scheduler] Watcher: every 5min (Vercel/GitHub/Gmail alerts)");
+    }
 
     // Build digest: Monday 10:00 — auto-generate build-in-public content
     if (this.config.github) {
@@ -604,6 +619,56 @@ Triage these emails now.`;
       job.lastDurationMs = Date.now() - startTime;
 
       return { status: "error", error: errMsg };
+    }
+  }
+
+  // ─── Background Watcher (KAIROS-lite) ──────────────────────
+  private watchState = { lastVercelState: "", lastPRCount: 0, lastUnreadCount: 0 };
+
+  private async watchLoop(): Promise<void> {
+    try {
+      // Vercel: alert on deploy errors
+      if (this.config.vercel?.getDeployments) {
+        try {
+          const deploys = await this.config.vercel.getDeployments(1);
+          const latest = deploys[0];
+          if (latest && latest.state === "ERROR" && this.watchState.lastVercelState !== "ERROR") {
+            await this.config.telegram.sendProactiveMessage(`⚠️ Deploy failed: ${latest.name}\nState: ERROR\nTime: ${latest.createdAt}`);
+            console.log("[watcher] Vercel deploy ERROR alert sent");
+          }
+          if (latest) this.watchState.lastVercelState = latest.state;
+        } catch { /* vercel check failed silently */ }
+      }
+
+      // GitHub: alert on new PRs
+      if (this.config.github?.getActivity) {
+        try {
+          const activity = await this.config.github.getActivity();
+          const openPRs = activity.prs.filter((p) => p.state === "open").length;
+          if (openPRs > this.watchState.lastPRCount && this.watchState.lastPRCount > 0) {
+            const newCount = openPRs - this.watchState.lastPRCount;
+            await this.config.telegram.sendProactiveMessage(`📬 ${newCount} new PR${newCount > 1 ? "s" : ""} opened (${openPRs} total open)`);
+            console.log(`[watcher] GitHub new PR alert: +${newCount}`);
+          }
+          this.watchState.lastPRCount = openPRs;
+        } catch { /* github check failed silently */ }
+      }
+
+      // Gmail: alert on inbox spike (>5 new unread in one check)
+      if (this.config.gmail) {
+        try {
+          const recent = await this.config.gmail.getRecent(1);
+          const unreadCount = recent.filter((e) => e.isUnread).length;
+          // Use a full unread count if available — approximation via recent otherwise
+          if (this.watchState.lastUnreadCount > 0 && unreadCount - this.watchState.lastUnreadCount > 5) {
+            await this.config.telegram.sendProactiveMessage(`📧 Inbox spike: ${unreadCount - this.watchState.lastUnreadCount} new unread emails`);
+            console.log("[watcher] Gmail inbox spike alert");
+          }
+          this.watchState.lastUnreadCount = unreadCount;
+        } catch { /* gmail check failed silently */ }
+      }
+    } catch (error) {
+      console.error("[watcher] Watch loop error:", error instanceof Error ? error.message : error);
     }
   }
 

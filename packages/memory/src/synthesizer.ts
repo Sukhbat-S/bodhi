@@ -30,12 +30,41 @@ export class MemorySynthesizer {
     this.db = db;
   }
 
+  private lastRunAt: Date | null = null;
+
   /**
-   * Run the full synthesis cycle. Called by Scheduler daily at 03:00.
+   * 3-gate check (inspired by autoDream): should synthesis run?
+   * Gate 1: 12h since last run
+   * Gate 2: 3+ new memories since last run (proxy for session activity)
+   * Gate 3: Not already running (simple flag)
+   */
+  private running = false;
+  async shouldRun(): Promise<{ run: boolean; reason: string }> {
+    if (this.running) return { run: false, reason: "already running" };
+    if (this.lastRunAt && Date.now() - this.lastRunAt.getTime() < 12 * 60 * 60 * 1000) {
+      return { run: false, reason: `last run ${Math.round((Date.now() - this.lastRunAt.getTime()) / 3600000)}h ago (need 12h)` };
+    }
+    // Count memories created since last run (or last 12h if first run)
+    const since = this.lastRunAt || new Date(Date.now() - 12 * 60 * 60 * 1000);
+    if (this.db) {
+      try {
+        const rows = await this.db.execute(sql`SELECT COUNT(*)::int as cnt FROM memories WHERE created_at > ${since}`);
+        const count = Number((rows as unknown as Array<{ cnt: number }>)[0]?.cnt ?? 0);
+        if (count < 3) return { run: false, reason: `only ${count} new memories (need 3)` };
+      } catch {
+        // If counting fails, allow run
+      }
+    }
+    return { run: true, reason: "all gates passed" };
+  }
+
+  /**
+   * Run the full synthesis cycle. Called by Scheduler every 4h (gated by shouldRun).
    */
   async run(): Promise<SynthesisReport> {
     const startTime = Date.now();
-    console.log("[synthesizer] Starting daily synthesis cycle...");
+    this.running = true;
+    console.log("[synthesizer] Starting synthesis cycle...");
 
     const [deduped, decayed, promoted, autoConfirmed, feedbackApplied] = await Promise.all([
       this.dedup(),
@@ -57,6 +86,9 @@ export class MemorySynthesizer {
       feedbackApplied,
       durationMs: Date.now() - startTime,
     };
+
+    this.running = false;
+    this.lastRunAt = new Date();
 
     console.log(
       `[synthesizer] Done: ${deduped} deduped, ${connected} connected, ${decayed} decayed, ${promoted} promoted, ${autoConfirmed} auto-confirmed, ${feedbackApplied} feedback-applied (${(report.durationMs / 1000).toFixed(1)}s)`

@@ -577,6 +577,45 @@ export function getFileOwnerships() {
   return request<{ files: FileOwnership[] }>("/sessions/files");
 }
 
+// --- Session SSE Stream ---
+
+export interface SessionStreamCallbacks {
+  onInit: (data: { sessions: ActiveSession[]; messages: SessionMessage[]; files: FileOwnership[] }) => void;
+  onSessionChange: (event: { type: string; [key: string]: unknown }) => void;
+  onMessageSent: (data: { message: SessionMessage }) => void;
+  onDisconnect: () => void;
+}
+
+export function subscribeSessionStream(callbacks: SessionStreamCallbacks): () => void {
+  const source = new EventSource(`${BASE}/sessions/stream`);
+
+  source.addEventListener("init", (e) => {
+    try { callbacks.onInit(JSON.parse(e.data)); } catch { /* malformed */ }
+  });
+
+  source.addEventListener("session:registered", (e) => {
+    try { callbacks.onSessionChange(JSON.parse(e.data)); } catch {}
+  });
+
+  source.addEventListener("session:deregistered", (e) => {
+    try { callbacks.onSessionChange(JSON.parse(e.data)); } catch {}
+  });
+
+  source.addEventListener("session:pinged", (e) => {
+    try { callbacks.onSessionChange(JSON.parse(e.data)); } catch {}
+  });
+
+  source.addEventListener("message:sent", (e) => {
+    try { callbacks.onMessageSent(JSON.parse(e.data)); } catch {}
+  });
+
+  source.onerror = () => {
+    callbacks.onDisconnect();
+  };
+
+  return () => { source.close(); };
+}
+
 // --- Chat ---
 
 export interface ChatMessage {

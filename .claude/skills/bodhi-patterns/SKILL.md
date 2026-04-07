@@ -35,7 +35,7 @@ Input text → Voyage AI embeddings → pgvector (Supabase Postgres) → similar
 
 - `packages/memory/` handles MemoryService + MemoryExtractor
 - `MemoryContextProvider` (priority 10) injects relevant memories into agent context
-- `MemorySynthesizer`: daily cron at 03:00 — dedup, cluster, decay, promote
+- `MemorySynthesizer`: every 4h (gated by shouldRun: 12h + 3 sessions + no lock) — dedup, cluster, decay, promote
 - `InsightGenerator`: pure SQL pattern detection for briefing prompts
 
 ## Context Provider Pattern
@@ -45,6 +45,20 @@ Providers implement `ContextProvider` interface with `priority` (higher = loaded
 Priority order: memory=10, goals=9.5, projects=9, entities=8, notion=8, gmail/calendar=7, github/vercel/supabase=6.
 
 Keyword-based relevance filtering in each provider.
+
+**Intent-aware gathering** (new): ContextEngine classifies messages by intent before selecting providers:
+- `quick` (schedule/email): Calendar + Gmail, 2K budget
+- `code` (deploy/PR/build): Memory + GitHub + Vercel + Supabase, 6K budget
+- `memory` (remember/decided): Memory + Goals + Entities + Projects, 8K budget
+- `full` (briefings/complex): all providers, 16K budget
+
+## Background Watcher (KAIROS-lite)
+
+Every 5 minutes, Scheduler checks for real-time events:
+- Vercel deploy ERROR → Telegram alert
+- New GitHub PRs → Telegram notification
+- Gmail inbox spike (>5 new unread) → Telegram alert
+Dedup via in-memory state tracking. Gated by service availability.
 
 ## Integration Init Pattern
 

@@ -8,6 +8,10 @@ import { precacheAndRoute, cleanupOutdatedCaches } from "workbox-precaching";
 
 declare const self: ServiceWorkerGlobalScope;
 
+// Force new SW to take over immediately (no waiting for old tabs to close)
+self.addEventListener("install", () => { self.skipWaiting(); });
+self.addEventListener("activate", (event) => { event.waitUntil(self.clients.claim()); });
+
 // Workbox precache injection point (vite-plugin-pwa fills this at build time)
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();

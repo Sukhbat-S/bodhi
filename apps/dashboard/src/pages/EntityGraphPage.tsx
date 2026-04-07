@@ -2,6 +2,9 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Billboard, Text } from '@react-three/drei';
 import * as THREE from 'three';
+import { useHandGesture } from '../hooks/useHandGesture';
+import { HandOverlay } from '../components/HandOverlay';
+import { GestureController } from '../components/GestureController';
 // @ts-expect-error — d3-force-3d has no types
 import { forceSimulation, forceLink, forceManyBody, forceCenter } from 'd3-force-3d';
 
@@ -380,6 +383,8 @@ export default function EntityGraphPage() {
   const [detail, setDetail] = useState<EntityDetail | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [flyTarget, setFlyTarget] = useState<[number, number, number] | null>(null);
+  const [gestureEnabled, setGestureEnabled] = useState(false);
+  const gestureState = useHandGesture(gestureEnabled);
 
   // Fetch data
   const loadGraph = useCallback(async () => {
@@ -521,6 +526,19 @@ export default function EntityGraphPage() {
 
           <div className="w-px h-4 bg-stone-800 mx-1" />
           <button
+            onClick={() => setGestureEnabled(!gestureEnabled)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+              gestureEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'text-stone-400 bg-stone-800/60 hover:bg-stone-800 hover:text-stone-200'
+            }`}
+            title="Toggle hand gesture control"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            {gestureEnabled ? 'Hand On' : 'Hand'}
+          </button>
+          <button
             onClick={loadGraph}
             className="px-3 py-1.5 text-xs font-medium text-stone-400 bg-stone-800/60 rounded-md hover:bg-stone-800 hover:text-stone-200 transition-colors"
           >
@@ -546,6 +564,14 @@ export default function EntityGraphPage() {
               setHoveredId={setHoveredId}
               onNodeClick={handleNodeClick}
             />
+            {gestureEnabled && gestureState.isActive && (
+              <GestureController
+                gesture={gestureState}
+                nodes={nodes3D}
+                onHover={setHoveredId}
+                onClick={handleNodeClick}
+              />
+            )}
           </Canvas>
         )}
 
@@ -557,9 +583,24 @@ export default function EntityGraphPage() {
 
         <DetailPanel entity={detail} onClose={() => { setDetail(null); setSelectedId(null); setFlyTarget(null); }} onNavigate={handleNavigate} />
 
+        {/* Hand gesture overlay */}
+        {gestureEnabled && (
+          <HandOverlay
+            videoRef={gestureState.videoRef}
+            landmarks={gestureState.landmarks}
+            gesture={gestureState.gesture}
+            isActive={gestureState.isActive}
+            hands={gestureState.hands}
+            pinchDistance={gestureState.pinchDistance}
+            palmPosition={gestureState.palmPosition}
+          />
+        )}
+
         {/* Controls hint */}
-        <div className="absolute bottom-4 left-4 text-[10px] text-stone-700">
-          Drag to orbit / Scroll to zoom / Click node for details
+        <div className={`absolute bottom-4 ${gestureEnabled ? 'left-56' : 'left-4'} text-[10px] text-stone-700`}>
+          {gestureEnabled
+            ? 'Palm: rotate / Pinch: zoom / Point: select / Fist: pan / Thumbs up: confirm / Wave: reset'
+            : 'Drag to orbit / Scroll to zoom / Click node for details'}
         </div>
       </div>
     </div>

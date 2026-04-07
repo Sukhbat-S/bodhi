@@ -130,13 +130,10 @@ export function GestureController({ gesture, nodes, onHover, onClick }: GestureC
           const screenX = (1 - tip.x) * 2 - 1;
           const screenY = -(tip.y * 2 - 1);
 
-          // 3D cursor: cast ray from camera through fingertip NDC, intersect z=0 plane
-          const raycaster = new THREE.Raycaster();
-          raycaster.setFromCamera(new THREE.Vector2(screenX, screenY), camera);
-          const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-          const hitPoint = new THREE.Vector3();
-          raycaster.ray.intersectPlane(plane, hitPoint);
-          if (hitPoint) cursorPos.current.lerp(hitPoint, 0.3);
+          // 3D cursor: place at fixed distance along ray from camera through fingertip
+          const ray = new THREE.Vector3(screenX, screenY, 0.5).unproject(camera).sub(camera.position).normalize();
+          const cursorTarget = camera.position.clone().add(ray.multiplyScalar(spherical.current.radius * 0.8));
+          cursorPos.current.lerp(cursorTarget, 0.3);
 
           // Show cursor via ref (no re-render)
           if (cursorRef.current) {

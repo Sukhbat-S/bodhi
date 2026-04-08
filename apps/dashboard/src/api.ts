@@ -745,3 +745,47 @@ export async function streamWorkflow(
     }
   }
 }
+
+// --- Content Pipeline ---
+
+export interface ContentItem {
+  id: string;
+  lessonNumber: number;
+  topic: string;
+  slides: Array<{ title: string; body: string; code?: string; imageUrl?: string }>;
+  caption: string;
+  status: "draft" | "ready" | "approved" | "posted" | "rejected";
+  feedbackNote?: string;
+  postedAt?: string;
+  postResults?: { facebook?: string; instagram?: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function getContentQueue(status?: string) {
+  const params = status ? `?status=${status}` : "";
+  return request<{ items: ContentItem[] }>(`/content/queue${params}`);
+}
+
+export function getContentItem(id: string) {
+  return request<ContentItem>(`/content/queue/${id}`);
+}
+
+export function approveContent(id: string) {
+  return request<{ approved: boolean }>(`/content/queue/${id}/approve`, { method: "POST" });
+}
+
+export function rejectContent(id: string, note?: string) {
+  return request<{ rejected: boolean }>(`/content/queue/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export function postContent(id: string) {
+  return request<{ posted: boolean; facebook?: unknown }>(`/content/queue/${id}/post`, { method: "POST" });
+}
+
+export function generateContent() {
+  return request<{ status: string; content?: string; error?: string }>("/content/generate", { method: "POST" });
+}

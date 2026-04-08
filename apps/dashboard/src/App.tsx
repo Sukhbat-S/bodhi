@@ -25,6 +25,7 @@ const SearchPage = lazy(() => import("./pages/SearchPage"));
 const TimelinePage = lazy(() => import("./pages/TimelinePage"));
 const EntityGraphPage = lazy(() => import("./pages/EntityGraphPage"));
 const WorkflowsPage = lazy(() => import("./pages/WorkflowsPage"));
+const ContentPage = lazy(() => import("./pages/ContentPage"));
 
 function PageLoader() {
   return (
@@ -92,6 +93,7 @@ export default function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/timeline" element={<TimelinePage />} />
             <Route path="/entities" element={<EntityGraphPage />} />
+            <Route path="/content" element={<ContentPage />} />
           </Routes>
         </Suspense>
       </main>

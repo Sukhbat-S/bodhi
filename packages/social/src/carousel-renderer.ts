@@ -77,6 +77,18 @@ function escapeHTML(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function highlightCode(code: string): string {
+  return code
+    // Comments
+    .replace(/(#[^\n]*)/g, '<span style="color:#6b7280">$1</span>')
+    // Strings
+    .replace(/(&quot;[^&]*&quot;)/g, '<span style="color:#34d399">$1</span>')
+    // Commands/keywords
+    .replace(/\b(npm|node|claude|cd|curl|git|mkdir|ls)\b/g, '<span style="color:#f59e0b">$1</span>')
+    // Flags
+    .replace(/(\s-[a-zA-Z]+)/g, '<span style="color:#60a5fa">$1</span>');
+}
+
 function buildSlideHTML(
   slide: CarouselSlide,
   lessonNumber: number,
@@ -86,7 +98,7 @@ function buildSlideHTML(
   isLast: boolean,
 ): string {
   const codeBlock = slide.code
-    ? `<div class="code-block"><div class="code-header"><span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span></div><pre><code>${escapeHTML(slide.code)}</code></pre></div>`
+    ? `<div class="code-block"><div class="code-header"><span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span></div><pre><code>${highlightCode(escapeHTML(slide.code))}</code></pre></div>`
     : "";
 
   const bodyHTML = escapeHTML(slide.body).replace(/\n/g, "<br>");
@@ -95,9 +107,10 @@ function buildSlideHTML(
     `<span class="dot ${i + 1 === slideIndex ? 'active' : ''}"></span>`
   ).join("");
 
-  // Alternate accent colors per slide for visual variety
-  const accents = ["#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4"];
+  // Consistent brand accent with subtle variation per slide
+  const accents = ["#d97706", "#2563eb", "#059669", "#7c3aed", "#dc2626", "#0891b2"];
   const accent = accents[(slideIndex - 1) % accents.length];
+  const brandAccent = "#d97706"; // consistent amber for brand elements
 
   return `<!DOCTYPE html>
 <html>
@@ -220,8 +233,25 @@ function buildSlideHTML(
     z-index: 1;
   }
 
+  .step-badge {
+    position: absolute;
+    top: 48px;
+    right: 60px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: ${accent};
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 800;
+    color: #0c0a09;
+    z-index: 2;
+  }
+
   .title {
-    font-size: ${isFirst ? '46px' : '40px'};
+    font-size: ${isFirst ? '52px' : '44px'};
     font-weight: 800;
     line-height: 1.15;
     color: #fafaf9;
@@ -245,8 +275,8 @@ function buildSlideHTML(
   }
 
   .body {
-    font-size: 22px;
-    line-height: 1.65;
+    font-size: 26px;
+    line-height: 1.6;
     color: #a8a29e;
     max-width: 920px;
   }
@@ -283,9 +313,9 @@ function buildSlideHTML(
 
   .code-block code {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 18px;
+    font-size: 20px;
     line-height: 1.6;
-    color: #d6d3d1;
+    color: #e7e5e4;
     white-space: pre-wrap;
     word-break: break-word;
   }
@@ -343,13 +373,14 @@ function buildSlideHTML(
 </head>
 <body>
   <div class="accent-line"></div>
+  ${!isFirst ? `<div class="step-badge">${slideIndex}</div>` : ''}
 
   <div class="header">
     <div class="brand">
       <div class="brand-icon">AI</div>
       <span class="brand-text">AI Бүтээгч</span>
     </div>
-    <span class="lesson-badge">${slideIndex}/${totalSlides}</span>
+    <span class="lesson-badge">#${lessonNumber} · ${slideIndex}/${totalSlides}</span>
   </div>
 
   <div class="content">

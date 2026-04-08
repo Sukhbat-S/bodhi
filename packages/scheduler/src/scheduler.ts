@@ -1232,7 +1232,7 @@ Generate exactly ${topic.slideCount} slides as a JSON array. Each slide has: tit
 Rules:
 - Write in Mongolian. Technical terms stay in English: ${KEEP_ENGLISH.slice(0, 15).join(", ")}
 - Translation guide: ${termsGuide}
-- Slide 1: hook/intro — grab attention with a question or bold statement
+- Slide 1: hook/intro — grab attention with a practical question or exciting possibility. Do NOT mention competitors (ChatGPT, Copilot, Cursor). Focus on what Claude Code enables, not what it beats.
 - Last slide: CTA — "Хадгалаад найздаа илгээгээрэй!" (Save and share!)
 ${topic.hasCode ? "- Include at least 2 slides with code examples" : "- No code examples needed for this topic"}
 - Body text: simple, everyday Mongolian. No jargon. Think Facebook audience, not documentation.

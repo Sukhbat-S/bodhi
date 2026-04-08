@@ -311,10 +311,12 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
           if (hasErrors && task.repairAttempts === 0) {
             task.repairAttempts++;
             onEvent({ type: "task:repair", missionId: mission.id, taskId: task.id });
-            const repaired = await this.repairTask(mission, task, cwd, onEvent);
+            const { repaired, diagnosis } = await this.repairTask(mission, task, cwd, onEvent);
             if (repaired) {
               task.status = "repaired";
-              task.confidence = 0.7; // lower confidence for repaired tasks
+              task.confidence = 0.7;
+              // Feed diagnosis into self-model so it stays fixed
+              this.recordDiagnosis(task, diagnosis);
               onEvent({ type: "task:completed", missionId: mission.id, taskId: task.id, result: task.result, repaired: true });
               this.updateSelfModel(task);
               return;
@@ -390,7 +392,7 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
     task: MissionTask,
     cwd: string,
     onEvent: (event: MissionEvent) => void,
-  ): Promise<boolean> {
+  ): Promise<{ repaired: boolean; diagnosis: string }> {
     const errorDesc = task.predictionErrors.map((e) => `${e.field}: expected ${e.expected}, got ${e.actual}`).join("; ");
 
     // Step 1: DIAGNOSE — ask a separate prompt why it failed (not the same logic that produced the error)
@@ -452,10 +454,39 @@ Fix the root cause identified above and try again. Do not repeat the same mistak
       if (bridgeTask.status === "completed") {
         task.result = bridgeTask.result;
         task.predictionErrors = this.checkPredictions(task);
-        return task.predictionErrors.filter((e) => e.severity === "error").length === 0;
+        return {
+          repaired: task.predictionErrors.filter((e) => e.severity === "error").length === 0,
+          diagnosis,
+        };
       }
     } catch { /* repair failed */ }
-    return false;
+    return { repaired: false, diagnosis };
+  }
+
+  /** Record a diagnosis into the self-model so the same error doesn't recur */
+  private recordDiagnosis(task: MissionTask, diagnosis: string): void {
+    const model = this.loadSelfModel();
+    const key = diagnosis.slice(0, 100).toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+    if (!key) return;
+
+    const existing = model.weaknesses.find((w) => w.pattern === key);
+    if (existing) {
+      existing.occurrences++;
+      existing.lastSeen = new Date().toISOString();
+    } else {
+      model.weaknesses.push({
+        pattern: key,
+        errorRate: 1,
+        occurrences: 1,
+        lastSeen: new Date().toISOString(),
+      });
+    }
+
+    try {
+      const dir = join(this.basePath, "data");
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(this.selfModelPath(), JSON.stringify(model, null, 2));
+    } catch { /* non-critical */ }
   }
 
   private createWorktree(taskId: string): string {

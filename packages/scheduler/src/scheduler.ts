@@ -69,7 +69,7 @@ interface EntityDataSource {
 
 export interface SchedulerConfig {
   agent: Agent;
-  telegram: TelegramSender;
+  telegram?: TelegramSender | null;
   memoryService: MemoryService;
   contextEngine: ContextEngine;
   timezone: string; // e.g. "Asia/Ulaanbaatar"
@@ -351,7 +351,7 @@ export class Scheduler {
       const lastStep = briefingStep || result.steps.filter((s) => !s.skipped).pop();
       if (lastStep) {
         try {
-          await this.config.telegram.sendProactiveMessage(lastStep.output);
+          await this.config.telegram?.sendProactiveMessage(lastStep.output);
         } catch {
           console.error("[scheduler] Failed to send workflow result to Telegram");
         }
@@ -592,7 +592,7 @@ Triage these emails now.`;
       const response = await this.config.agent.chat(prompt);
 
       const message = `📬 Inbox Triage\n\n${response.content}`;
-      await this.config.telegram.sendProactiveMessage(message);
+      await this.config.telegram?.sendProactiveMessage(message);
 
       if (this.config.briefingStore) {
         try {
@@ -633,7 +633,7 @@ Triage these emails now.`;
           const deploys = await this.config.vercel.getDeployments(1);
           const latest = deploys[0];
           if (latest && latest.state === "ERROR" && this.watchState.lastVercelState !== "ERROR") {
-            await this.config.telegram.sendProactiveMessage(`⚠️ Deploy failed: ${latest.name}\nState: ERROR\nTime: ${latest.createdAt}`);
+            await this.config.telegram?.sendProactiveMessage(`⚠️ Deploy failed: ${latest.name}\nState: ERROR\nTime: ${latest.createdAt}`);
             console.log("[watcher] Vercel deploy ERROR alert sent");
           }
           if (latest) this.watchState.lastVercelState = latest.state;
@@ -647,7 +647,7 @@ Triage these emails now.`;
           const openPRs = activity.prs.filter((p) => p.state === "open").length;
           if (openPRs > this.watchState.lastPRCount && this.watchState.lastPRCount > 0) {
             const newCount = openPRs - this.watchState.lastPRCount;
-            await this.config.telegram.sendProactiveMessage(`📬 ${newCount} new PR${newCount > 1 ? "s" : ""} opened (${openPRs} total open)`);
+            await this.config.telegram?.sendProactiveMessage(`📬 ${newCount} new PR${newCount > 1 ? "s" : ""} opened (${openPRs} total open)`);
             console.log(`[watcher] GitHub new PR alert: +${newCount}`);
           }
           this.watchState.lastPRCount = openPRs;
@@ -661,7 +661,7 @@ Triage these emails now.`;
           const unreadCount = recent.filter((e) => e.isUnread).length;
           // Use a full unread count if available — approximation via recent otherwise
           if (this.watchState.lastUnreadCount > 0 && unreadCount - this.watchState.lastUnreadCount > 5) {
-            await this.config.telegram.sendProactiveMessage(`📧 Inbox spike: ${unreadCount - this.watchState.lastUnreadCount} new unread emails`);
+            await this.config.telegram?.sendProactiveMessage(`📧 Inbox spike: ${unreadCount - this.watchState.lastUnreadCount} new unread emails`);
             console.log("[watcher] Gmail inbox spike alert");
           }
           this.watchState.lastUnreadCount = unreadCount;
@@ -715,7 +715,7 @@ Rules:
 
       const content = `**Weekly Build Digest** (ready to post)\n\n${response.content}\n\n_Reply with /post to publish to X, or edit and post manually._`;
 
-      await this.config.telegram.sendProactiveMessage(content);
+      await this.config.telegram?.sendProactiveMessage(content);
 
       job.lastRun = new Date();
       job.lastResult = "sent";
@@ -925,7 +925,7 @@ Generate the ${type} briefing now.`;
             : "📊 Weekly Synthesis";
 
       const message = `${label}\n\n${response.content}`;
-      await this.config.telegram.sendProactiveMessage(message);
+      await this.config.telegram?.sendProactiveMessage(message);
 
       // 5b. Persist briefing to DB (for PWA feed)
       if (this.config.briefingStore) {

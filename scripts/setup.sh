@@ -82,12 +82,31 @@ npm run build
 
 echo ""
 
-# Check if database is reachable
+# Check if database is reachable + enable pgvector + push schema
 echo "Checking database connection..."
 if grep -q "^DATABASE_URL=" .env 2>/dev/null; then
   DB_URL=$(grep "^DATABASE_URL=" .env | cut -d'=' -f2-)
   if [ -n "$DB_URL" ] && [ "$DB_URL" != "postgresql://postgres:password@db.xxx.supabase.co:6543/postgres" ]; then
     echo "  [ok] DATABASE_URL is configured"
+
+    # Enable pgvector extension (required for memory embeddings)
+    echo ""
+    echo "Enabling pgvector extension..."
+    if psql "$DB_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;" 2>/dev/null; then
+      echo "  [ok] pgvector enabled"
+    else
+      echo "  [!] Could not auto-enable pgvector."
+      echo "      Enable it manually: Supabase Dashboard > Database > Extensions > vector"
+    fi
+
+    # Push schema to database
+    echo ""
+    echo "Pushing database schema..."
+    if npm run db:push -w @seneca/db 2>/dev/null; then
+      echo "  [ok] Database schema up to date"
+    else
+      echo "  [!] Schema push failed. Check DATABASE_URL and try: npm run db:push -w @seneca/db"
+    fi
   else
     echo "  [!] DATABASE_URL is not configured. Set it in .env before starting."
   fi

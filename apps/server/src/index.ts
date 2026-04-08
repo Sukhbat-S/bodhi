@@ -291,21 +291,27 @@ async function main() {
     : null;
   if (selfAssessor) console.log("  SelfAssessor: enabled (BODHI_SELF_ASSESS=true)");
 
-  // 9. Initialize Telegram Bot
-  const telegramBot = new TelegramBot({
-    token: config.TELEGRAM_BOT_TOKEN,
-    allowedUserId: config.TELEGRAM_ALLOWED_USER_ID,
-    agent,
-    bridge: backend,
-    contextEngine,
-    memoryService,
-    memoryExtractor,
-    gmailService: gmailService || undefined,
-    calendarService: calendarService || undefined,
-    conversationService,
-    groqApiKey: config.GROQ_API_KEY,
-  });
-  console.log(`  Telegram: configured (user ${config.TELEGRAM_ALLOWED_USER_ID})`);
+  // 9. Initialize Telegram Bot (optional — skipped if no token)
+  const telegramBot = config.TELEGRAM_BOT_TOKEN && config.TELEGRAM_ALLOWED_USER_ID
+    ? new TelegramBot({
+        token: config.TELEGRAM_BOT_TOKEN,
+        allowedUserId: config.TELEGRAM_ALLOWED_USER_ID,
+        agent,
+        bridge: backend,
+        contextEngine,
+        memoryService,
+        memoryExtractor,
+        gmailService: gmailService || undefined,
+        calendarService: calendarService || undefined,
+        conversationService,
+        groqApiKey: config.GROQ_API_KEY,
+      })
+    : null;
+  if (telegramBot) {
+    console.log(`  Telegram: configured (user ${config.TELEGRAM_ALLOWED_USER_ID})`);
+  } else {
+    console.log("  Telegram: skipped (no TELEGRAM_BOT_TOKEN)");
+  }
 
   // 10. Initialize Scheduler (proactive briefings via cron)
   // Create briefing store adapter for persisting to DB
@@ -1076,7 +1082,7 @@ async function main() {
         const briefingStep = result.steps.find((s) => s.stepName === "generate-briefing");
         const sendStep = briefingStep || result.steps.filter((s) => !s.skipped && !s.output.startsWith("[{")).pop();
         if (sendStep) {
-          telegramBot.sendProactiveMessage(sendStep.output).catch(() => {});
+          telegramBot?.sendProactiveMessage(sendStep.output).catch(() => {});
         }
 
         // Create calendar events from time-blocks step
@@ -1782,7 +1788,7 @@ Return ONLY valid JSON:
       } catch { /* non-critical */ }
 
       if (notify && telegramBot) {
-        telegramBot.sendProactiveMessage(`🔔 ${content}`).catch(() => {});
+        telegramBot?.sendProactiveMessage(`🔔 ${content}`).catch(() => {});
       }
     }
 
@@ -1822,7 +1828,7 @@ Return ONLY valid JSON:
       } catch { /* non-critical */ }
 
       if (notify && telegramBot) {
-        telegramBot.sendProactiveMessage(`🔔 ${content}`).catch(() => {});
+        telegramBot?.sendProactiveMessage(`🔔 ${content}`).catch(() => {});
       }
     }
 
@@ -1940,11 +1946,13 @@ Return ONLY valid JSON:
   scheduler.start();
 
   // Start Telegram bot (non-blocking — launch() never resolves during long-polling)
-  telegramBot.start().catch((error) => {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(`  Telegram: FAILED to start — ${msg}`);
-    console.error("  (Server continues without Telegram)");
-  });
+  if (telegramBot) {
+    telegramBot.start().catch((error) => {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`  Telegram: FAILED to start — ${msg}`);
+      console.error("  (Server continues without Telegram)");
+    });
+  }
 
   console.log("\n🌳  BODHI is online.\n");
 
@@ -1953,7 +1961,7 @@ Return ONLY valid JSON:
     console.log("\n🌳  BODHI shutting down...");
     scheduler.stop();
     try {
-      await telegramBot.stop();
+      await telegramBot?.stop();
     } catch {
       // Bot wasn't running
     }

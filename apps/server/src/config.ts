@@ -9,11 +9,9 @@ const envSchema = z.object({
   // Anthropic (optional — reasoning now routes through Claude Code CLI / Max subscription)
   ANTHROPIC_API_KEY: z.string().optional(),
 
-  // Telegram
-  TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
-  TELEGRAM_ALLOWED_USER_ID: z
-    .string()
-    .min(1, "TELEGRAM_ALLOWED_USER_ID is required"),
+  // Telegram (optional — enables Telegram bot channel)
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_ALLOWED_USER_ID: z.string().optional(),
 
   // Database
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),

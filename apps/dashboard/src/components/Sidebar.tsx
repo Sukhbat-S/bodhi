@@ -37,26 +37,6 @@ const navGroups: NavGroup[] = [
       { to: "/timeline", label: "Timeline", icon: "timeline" },
     ],
   },
-  {
-    label: "Awareness",
-    items: [
-      { to: "/calendar", label: "Calendar", icon: "calendar" },
-      { to: "/inbox", label: "Inbox", icon: "inbox" },
-      { to: "/github", label: "GitHub", icon: "github" },
-      { to: "/vercel", label: "Vercel", icon: "vercel" },
-      { to: "/supabase", label: "Supabase", icon: "supabase" },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      { to: "/status", label: "Status", icon: "pulse" },
-      { to: "/quality", label: "Quality", icon: "quality" },
-      { to: "/workflows", label: "Workflows", icon: "workflows" },
-      { to: "/ecosystem", label: "Ecosystem", icon: "ecosystem" },
-      { to: "/notion", label: "Notion", icon: "notion" },
-    ],
-  },
 ];
 
 const icons: Record<string, ReactNode> = {

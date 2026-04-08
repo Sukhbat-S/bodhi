@@ -42,7 +42,7 @@ import { VercelService, VercelContextProvider } from "@seneca/vercel";
 import { SupabaseAwarenessService, SupabaseAwarenessProvider } from "@seneca/supabase-awareness";
 import { MetaService } from "@seneca/social";
 import { desc } from "drizzle-orm";
-import { briefings, activeSessions as activeSessionsTable, sessionMessages as sessionMessagesTable, contentQueue } from "@seneca/db";
+import { briefings, activeSessions as activeSessionsTable, sessionMessages as sessionMessagesTable, contentQueue, missions as missionsTable, missionTasks as missionTasksTable } from "@seneca/db";
 import { loadConfig } from "./config.js";
 import { ConversationService } from "./services/conversation.js";
 import { PushService } from "./services/push.js";
@@ -537,17 +537,24 @@ async function main() {
 
   // API: Missions — dispatch goals to Orchestrator with streaming progress via SSE
   const orchestrator = new Orchestrator(backend, config.BODHI_PROJECT_DIR || process.cwd());
-  const missionHistory: Array<{
-    id: string; goal: string; model: string; status: string;
-    tasks: Array<{ id: string; title: string; status: string; result?: string; error?: string }>;
-    result?: string; error?: string; startedAt: string; completedAt?: string;
-  }> = [];
-
-  const liveMissions = new Map<string, typeof missionHistory[0]>();
-
-  app.get("/api/missions", (c) => {
-    const active = Array.from(liveMissions.values());
-    return c.json({ missions: [...active, ...missionHistory.slice(-20)] });
+  app.get("/api/missions", async (c) => {
+    const rows = await db.select().from(missionsTable).orderBy(sql`${missionsTable.startedAt} DESC`).limit(20);
+    const allTasks = rows.length > 0
+      ? await db.select().from(missionTasksTable).where(sql`${missionTasksTable.missionId} IN (${sql.join(rows.map((r) => sql`${r.id}`), sql`,`)})`)
+      : [];
+    const missions = rows.map((r) => ({
+      id: r.id,
+      goal: r.goal,
+      model: r.model,
+      status: r.status,
+      tasks: allTasks.filter((t) => t.missionId === r.id).map((t) => ({ id: t.id, title: t.title, status: t.status, result: t.result, error: t.error })),
+      result: r.result,
+      error: r.error,
+      confidence: r.confidence,
+      startedAt: r.startedAt?.toISOString(),
+      completedAt: r.completedAt?.toISOString(),
+    }));
+    return c.json({ missions });
   });
 
   app.post("/api/missions/dispatch", async (c) => {
@@ -1018,45 +1025,48 @@ async function main() {
   const sessionBus = new EventEmitter();
   sessionBus.setMaxListeners(50);
 
-  // Track missions for history (GET /api/missions)
+  // Persist missions to DB via sessionBus events
   sessionBus.on("event", (event: Record<string, unknown>) => {
     const mid = event.missionId as string | undefined;
     if (!mid) return;
     const t = event.type as string;
+
     if (t === "mission:dispatched") {
-      liveMissions.set(mid, {
-        id: mid, goal: (event.goal as string) || "", model: (event.model as string) || "sonnet",
-        status: "running", tasks: [], startedAt: new Date().toISOString(),
-      });
+      db.insert(missionsTable).values({
+        id: mid, goal: (event.goal as string) || "", model: (event.model as string) || "opus", status: "planning",
+      }).catch((e) => console.error("[mission-db]", e));
     }
     if (t === "mission:planned") {
-      const m = liveMissions.get(mid);
-      if (m) {
-        const plan = event.plan as { phases: { tasks: { id: string; title: string }[] }[] };
-        m.tasks = plan.phases.flatMap((p) => p.tasks.map((tk) => ({ id: tk.id, title: tk.title, status: "pending" })));
+      const plan = event.plan as { phases: { tasks: { id: string; title: string; prompt?: string }[] }[] };
+      db.update(missionsTable).set({ plan: plan, status: "executing" }).where(sql`${missionsTable.id} = ${mid}`).catch(() => {});
+      const tasks = plan.phases.flatMap((p) => p.tasks.map((tk) => ({
+        id: tk.id, missionId: mid, title: tk.title, prompt: tk.prompt || "", status: "pending" as const,
+      })));
+      if (tasks.length > 0) {
+        db.insert(missionTasksTable).values(tasks).catch(() => {});
       }
+    }
+    if (t === "task:running") {
+      db.update(missionTasksTable).set({ status: "running", startedAt: new Date() }).where(sql`${missionTasksTable.id} = ${event.taskId}`).catch(() => {});
     }
     if (t === "task:completed" || t === "task:failed") {
-      const m = liveMissions.get(mid);
-      if (m) {
-        const task = m.tasks.find((tk) => tk.id === event.taskId);
-        if (task) {
-          task.status = t === "task:completed" ? "completed" : "failed";
-          task.result = event.result as string | undefined;
-          task.error = event.error as string | undefined;
-        }
-      }
+      db.update(missionTasksTable).set({
+        status: t === "task:completed" ? "completed" : "failed",
+        result: (event.result as string) || undefined,
+        error: (event.error as string) || undefined,
+        confidence: (event.confidence as number) || undefined,
+        completedAt: new Date(),
+      }).where(sql`${missionTasksTable.id} = ${event.taskId}`).catch(() => {});
     }
     if (t === "mission:completed" || t === "mission:failed") {
-      const m = liveMissions.get(mid);
-      if (m) {
-        m.status = t === "mission:completed" ? "completed" : "failed";
-        m.result = event.result as string | undefined;
-        m.error = event.error as string | undefined;
-        m.completedAt = new Date().toISOString();
-        missionHistory.push({ ...m });
-        liveMissions.delete(mid);
-      }
+      db.update(missionsTable).set({
+        status: t === "mission:completed" ? "completed" : "failed",
+        result: (event.result as string) || undefined,
+        error: (event.error as string) || undefined,
+        confidence: (event.confidence as number) || undefined,
+        predictionErrors: (event.predictionErrors as unknown) || undefined,
+        completedAt: new Date(),
+      }).where(sql`${missionsTable.id} = ${mid}`).catch(() => {});
     }
   });
 

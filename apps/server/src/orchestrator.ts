@@ -244,7 +244,7 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
       model,
       tools: "",
       noSessionPersistence: true,
-      effort: "high",
+      effort: "max",
     });
 
     const text = task.result || "";
@@ -272,9 +272,9 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
         cwd,
         model: mission.model,
         permissionMode: "bypassPermissions",
-        maxTurns: 20,
+        maxTurns: 25,
         noSessionPersistence: true,
-        effort: "high",
+        effort: "max",
       }, (update) => {
         if (update.type === "progress") {
           task.progress.push(update.content);
@@ -441,9 +441,9 @@ Fix the root cause identified above and try again. Do not repeat the same mistak
         cwd,
         model: mission.model,
         permissionMode: "bypassPermissions",
-        maxTurns: 15,
+        maxTurns: 25,
         noSessionPersistence: true,
-        effort: "high",
+        effort: "max",
       }, (update) => {
         if (update.type === "progress") {
           task.progress.push(update.content);

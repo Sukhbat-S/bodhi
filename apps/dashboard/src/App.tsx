@@ -1,5 +1,6 @@
 import { useState, lazy, Suspense } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import Sidebar from "./components/Sidebar";
 import CommandPalette from "./components/CommandPalette";
 import Pet from "./components/Pet";
@@ -76,7 +77,16 @@ export default function App() {
       {/* Main content */}
       <main className="flex-1 overflow-y-auto pt-14 md:pt-0 bg-stone-950">
         <Suspense fallback={<PageLoader />}>
-          <Routes>
+          <AnimatePresence mode="wait">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="h-full"
+          >
+          <Routes location={location}>
             <Route path="/" element={<ReflectionPage />} />
             <Route path="/status" element={<StatusPage />} />
             <Route path="/briefings" element={<BriefingsPage />} />
@@ -97,6 +107,8 @@ export default function App() {
             <Route path="/content" element={<ContentPage />} />
             {/* Missions merged into home page */}
           </Routes>
+          </motion.div>
+          </AnimatePresence>
         </Suspense>
       </main>
     </div>

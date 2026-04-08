@@ -13,7 +13,7 @@ import type { MemorySynthesizer } from "@seneca/memory";
 import type { InsightGenerator, Insight } from "@seneca/memory";
 
 export type BriefingType = "morning" | "evening" | "weekly";
-export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest" | "workflow" | "persona-refresh";
+export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest" | "workflow" | "persona-refresh" | "daily-intel" | "jewelry-changelog";
 
 interface TelegramSender {
   sendProactiveMessage(text: string): Promise<void>;
@@ -99,41 +99,48 @@ interface JobRecord {
 const PROMPTS: Record<BriefingType, string> = {
   morning: `You are BODHI, generating a morning briefing.
 
-Below are recent memories, today's calendar, inbox, and active goals.
-Your job: help him see clearly. Lead with what matters, not what's scheduled.
+Below are recent memories, today's calendar, inbox, active goals, and project context.
+Your job: help him see clearly AND act decisively. Lead with what matters most today.
 
 Structure your response in this order:
-1. **What I notice** — one honest observation about where his energy and attention have been flowing. Reference specific memories. If there are active goals (type "goal"), mention progress or drift.
-2. **Today** — calendar events + notable emails. Brief. If nothing, say "Clear day."
-3. **Active goals** — if goal-type memories exist, surface them. "You said you wanted to [goal]. Here's where that stands." If a goal hasn't been mentioned in weeks, gently note it.
-4. **One question** — a reflective question from the patterns you see. Not generic. Specific to what's actually happening.
+1. **Pattern** — one honest observation about where his energy and attention have been flowing. Reference specific memories. If you see repeated decisions, avoided topics, or energy shifts, name them.
+2. **Today's Focus** — 3 specific tasks ranked by impact. For each:
+   - What to do (concrete action, not vague)
+   - Why it matters (connects to a goal, unblocks something, or has a deadline)
+   - Estimated effort: quick (< 30min), focused (1-2h), or deep (half day)
+   Format: "1. [task] — [why] (effort)"
+   Base these on: stalled goals (>3 days no progress), pending items from recent sessions, calendar gaps, unfinished work from yesterday, and active project needs.
+3. **Schedule** — calendar events + notable emails. Brief. If nothing, say "Clear day — use it."
+4. **Goals check** — if goal-type memories exist, surface them. Flag stalled ones (>7 days no progress). If a goal hasn't been mentioned in 2+ weeks, ask if it's still active.
+5. **One question** — a reflective question from the patterns you see. Not generic. Specific.
 
 Rules:
-- Mirror mode: observe, don't prescribe. No cheerleading.
-- Lead with INSIGHT, not logistics. The calendar is context, not the headline.
-- If you see a pattern (repeated decisions, avoided topics, energy shifts), name it gently.
-- Under 200 words
+- Mirror mode: observe and suggest, but don't cheerleader. Be direct.
+- The task list is the HEADLINE. Calendar is context, tasks are the point.
+- Tasks must be specific enough to start immediately — "work on jewelry platform" is too vague, "add Mongolian translations to the admin order page" is actionable.
+- If you see something stalled or blocked, say it plainly.
+- Under 250 words
 - If Gmail or Calendar data is provided below, include it
-- If GitHub, Vercel, or Supabase data is provided, mention notable activity
+- If GitHub, Vercel, or Supabase data is provided, check for: failed deploys, open PRs needing review, unread alerts
 - If Entity data is provided, mention who/what is most active
 - Use Markdown formatting`,
 
   evening: `You are generating an evening reflection for Sukhbat.
 
 Below are memories from today, today's calendar events, and inbox activity.
-Your job: reflect on what actually happened today and ask one question.
+Your job: reflect on what actually happened today, note what moved forward, and set up tomorrow.
 
 Structure your response in this order:
-1. **Day Recap** — what happened today based on memories and calendar events.
-2. **Inbox** — if there were notable emails today, mention them briefly. Otherwise skip.
-3. **Observation** — one honest observation about the day. If brain insights are provided, incorporate the most relevant one.
-4. **Tomorrow Preview** — if tomorrow's schedule is provided, mention what's coming.
-5. **Question** — one question.
+1. **Done today** — what actually shipped or progressed. Be specific — commits, conversations, decisions made. If nothing notable, say "Quiet day."
+2. **Still open** — anything started but not finished, or promised but not done. No judgment, just clarity.
+3. **Inbox** — if there were notable emails or unanswered messages, mention them briefly. Otherwise skip.
+4. **Tomorrow** — if tomorrow's schedule is provided, mention what's coming. Suggest 1 thing to start the day with based on what's still open.
+5. **Observation** — one honest pattern you notice. If brain insights are provided, incorporate the most relevant one.
 
 Rules:
-- Mirror mode: reflect what you see, don't advise
-- No "great job" or cheerleading
-- Under 150 words
+- Mirror mode: reflect what you see, don't cheerleader
+- "Still open" is not a guilt list — it's context for tomorrow
+- Under 180 words
 - If Gmail or Calendar data is provided below, you MUST include it
 - If Entity data is provided, note which people and projects came up today
 - Use Markdown formatting`,
@@ -186,6 +193,53 @@ Output format:
 
 **Skipped:** X newsletters, Y promos, Z notifications`;
 
+const DAILY_INTEL_PROMPT = `You are BODHI, generating a daily intelligence brief for Sukhbat.
+
+Below are tech news headlines fetched from Hacker News and other sources, plus Sukhbat's active goals and recent project work.
+
+Your job: filter the noise and surface only what's RELEVANT to his work and interests.
+
+Sukhbat is a 21-year-old builder from Mongolia working on:
+- BODHI (personal AI companion, TypeScript monorepo)
+- Shigtgee (jewelry e-commerce, Next.js + Supabase)
+- Building in public on X and GitHub
+
+His interests: Claude/Anthropic updates, AI tooling, TypeScript ecosystem, React, Supabase, Vercel, indie building, open source.
+
+Structure your response:
+1. **Must-Know** (0-3 items) — Only things that directly affect his active projects or tools he uses daily. If nothing qualifies, say "Nothing critical today."
+2. **Worth Watching** (0-3 items) — Interesting developments in his space. Brief, one line each.
+3. **Skip Today** — One sentence on what's trending but irrelevant to him.
+
+Rules:
+- Ruthless relevance filter. 2 relevant items > 10 generic ones.
+- For each item: what happened + why it matters TO HIM specifically
+- If a Claude Code update dropped, lead with it and explain what changed
+- If something affects Supabase, Vercel, Next.js, or TypeScript — include it
+- Under 200 words total
+- If no news is genuinely relevant, say so honestly. "Quiet day — heads down." is a valid brief.
+- Use Markdown formatting`;
+
+const JEWELRY_CHANGELOG_PROMPT = `You are BODHI, generating a changelog update for the Shigtgee jewelry platform.
+
+Below are recent git commits from the jewelry platform repository. Your job: translate developer commits into a simple, clear update message that a NON-TECHNICAL person can understand.
+
+The audience is Suugii (Sukhbat's sister) who runs the jewelry business daily. She uses the admin panel for orders, products, and content. She communicates via Facebook Messenger in Mongolian.
+
+Structure:
+1. **Шинэ** (New) — New features she can use. Explain what it does and where to find it.
+2. **Засвар** (Fixed) — Bugs that were fixed. Only include if they affected her workflow.
+3. **Анхааруулга** (Note) — Anything she needs to know or do differently.
+
+Rules:
+- Write in Mongolian
+- Use simple, everyday language — no code terms, no technical jargon
+- Skip: refactors, dependency updates, CI changes, type fixes — she doesn't care
+- If no user-facing changes, say: "Өнөөдөр системд ажиллаж байна, харагдах өөрчлөлт алга." (Working on the system today, no visible changes.)
+- For each feature: explain WHERE to find it in the admin panel
+- Under 150 words
+- Include a friendly tone — she's family`;
+
 export class Scheduler {
   private config: SchedulerConfig;
   private tasks: ScheduledTask[] = [];
@@ -196,7 +250,7 @@ export class Scheduler {
     this.config = config;
 
     // Initialize job records
-    for (const type of ["morning", "evening", "weekly", "synthesis", "inbox-triage", "build-digest"] as SchedulerJobType[]) {
+    for (const type of ["morning", "evening", "weekly", "synthesis", "inbox-triage", "build-digest", "daily-intel", "jewelry-changelog"] as SchedulerJobType[]) {
       this.jobs.set(type, {
         type,
         lastRun: null,
@@ -235,6 +289,22 @@ export class Scheduler {
         timezone: tz,
       })
     );
+
+    // Daily intelligence: 07:30 — news + research digest before morning briefing
+    this.tasks.push(
+      cron.schedule("30 7 * * *", () => this.runDailyIntel(), {
+        timezone: tz,
+      })
+    );
+    console.log("[scheduler] Daily intel: 07:30 UB");
+
+    // Jewelry changelog: 21:00 — translate today's commits for sisters
+    this.tasks.push(
+      cron.schedule("0 21 * * *", () => this.runJewelryChangelog(), {
+        timezone: tz,
+      })
+    );
+    console.log("[scheduler] Jewelry changelog: 21:00 UB");
 
     // Inbox triage: 09:00 daily
     if (this.config.gmail) {
@@ -312,6 +382,12 @@ export class Scheduler {
     }
     if (type === "build-digest") {
       return this.runBuildDigest();
+    }
+    if (type === "daily-intel") {
+      return this.runDailyIntel();
+    }
+    if (type === "jewelry-changelog") {
+      return this.runJewelryChangelog();
     }
     if (type === "workflow" && workflowId) {
       return this.runWorkflow(workflowId);
@@ -522,7 +598,7 @@ ${goalText || "No explicit goals found"}`;
 
     try {
       const report = await this.config.synthesizer.run();
-      const summary = `Synthesis complete: ${report.deduped} deduped, ${report.connected} connected, ${report.decayed} decayed, ${report.promoted} promoted`;
+      const summary = `Synthesis complete: ${report.deduped} deduped, ${report.connected} connected, ${report.crossProject} cross-project, ${report.decayed} decayed, ${report.promoted} promoted`;
 
       job.lastRun = new Date();
       job.lastResult = "sent";
@@ -726,6 +802,205 @@ Rules:
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error(`[scheduler] Build digest failed: ${errMsg}`);
+
+      job.lastRun = new Date();
+      job.lastResult = "error";
+      job.lastDurationMs = Date.now() - startTime;
+
+      return { status: "error", error: errMsg };
+    }
+  }
+
+  /**
+   * Daily intelligence: fetch tech news, filter by relevance, send digest.
+   * Runs at 07:30 — before morning briefing.
+   */
+  private async runDailyIntel(): Promise<{ status: string; content?: string; error?: string }> {
+    const startTime = Date.now();
+    const job = this.jobs.get("daily-intel")!;
+
+    try {
+      // 1. Fetch Hacker News top stories
+      const hnStories = await this.fetchHackerNews(30);
+
+      if (hnStories.length === 0) {
+        console.log("[scheduler] Daily intel skipped — no news fetched");
+        job.lastRun = new Date();
+        job.lastResult = "skipped";
+        job.lastDurationMs = Date.now() - startTime;
+        return { status: "skipped" };
+      }
+
+      // 2. Get active goals and recent project context for relevance filtering
+      const goalsResult = await this.config.memoryService.listFiltered({ type: "goal", limit: 5 });
+      const recentWork = await this.config.memoryService.list(5);
+      const goalsText = goalsResult.memories.length > 0
+        ? goalsResult.memories.map((g) => `- ${g.content}`).join("\n")
+        : "No active goals.";
+      const recentText = recentWork.map((m) => `- [${m.type}] ${m.content}`).join("\n");
+
+      // 3. Build prompt with news + context
+      const newsText = hnStories
+        .map((s, i) => `${i + 1}. ${s.title} (${s.score} points) — ${s.url || "discussion"}`)
+        .join("\n");
+
+      const prompt = `${DAILY_INTEL_PROMPT}
+
+## Today's Tech News (Hacker News Top 30)
+
+${newsText}
+
+## Sukhbat's Active Goals
+
+${goalsText}
+
+## Recent Work
+
+${recentText}
+
+Generate the daily intelligence brief now.`;
+
+      // 4. Generate via Agent
+      console.log("[scheduler] Generating daily intel...");
+      const response = await this.config.agent.chat(prompt);
+
+      // 5. Send to Telegram
+      const message = `📡 Daily Intel\n\n${response.content}`;
+      await this.config.telegram?.sendProactiveMessage(message);
+
+      // 6. Store notable items in memory
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        await this.config.memoryService.store({
+          content: `Daily intelligence brief (${today}): ${response.content.slice(0, 300)}`,
+          type: "event",
+          importance: 0.4,
+          tags: ["daily-intel", today],
+        });
+      } catch {
+        // Non-critical — don't fail the job if memory store fails
+      }
+
+      job.lastRun = new Date();
+      job.lastResult = "sent";
+      job.lastDurationMs = Date.now() - startTime;
+
+      console.log(`[scheduler] Daily intel sent (${Date.now() - startTime}ms)`);
+      return { status: "sent", content: response.content };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] Daily intel failed: ${errMsg}`);
+
+      job.lastRun = new Date();
+      job.lastResult = "error";
+      job.lastDurationMs = Date.now() - startTime;
+
+      return { status: "error", error: errMsg };
+    }
+  }
+
+  /**
+   * Fetch top stories from Hacker News API.
+   */
+  private async fetchHackerNews(count: number): Promise<{ title: string; url: string; score: number }[]> {
+    try {
+      const res = await fetch("https://hacker-news.firebaseio.com/v0/topstories.json");
+      if (!res.ok) return [];
+
+      const ids = (await res.json()) as number[];
+      const topIds = ids.slice(0, count);
+
+      // Fetch stories in parallel (batched)
+      const stories = await Promise.allSettled(
+        topIds.map(async (id) => {
+          const r = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`);
+          return r.json() as Promise<{ title: string; url?: string; score: number }>;
+        })
+      );
+
+      return stories
+        .filter((r): r is PromiseFulfilledResult<{ title: string; url?: string; score: number }> => r.status === "fulfilled")
+        .map((r) => ({
+          title: r.value.title || "Untitled",
+          url: r.value.url || "",
+          score: r.value.score || 0,
+        }));
+    } catch (err) {
+      console.error("[scheduler] HN fetch failed:", err instanceof Error ? err.message : err);
+      return [];
+    }
+  }
+
+  /**
+   * Jewelry changelog: read git log from jewelry repo, generate Mongolian update for sisters.
+   * Runs at 21:00 daily.
+   */
+  private async runJewelryChangelog(): Promise<{ status: string; content?: string; error?: string }> {
+    const startTime = Date.now();
+    const job = this.jobs.get("jewelry-changelog")!;
+
+    try {
+      // 1. Get today's commits from jewelry repo via GitHub API or git log
+      let commits = "";
+
+      if (this.config.github?.getActivity) {
+        try {
+          const activity = await this.config.github.getActivity();
+          commits = activity.commits
+            .map((c: any) => `- ${c.message || c.commit?.message || "no message"}`)
+            .join("\n");
+        } catch {
+          // Fall through to empty
+        }
+      }
+
+      // 2. Also try local git log for the jewelry repo
+      if (!commits) {
+        try {
+          const { execSync } = await import("node:child_process");
+          const gitLog = execSync(
+            'git log --oneline --since="24 hours ago" 2>/dev/null || echo ""',
+            { cwd: "/Users/macbookpro/Documents/shigtgee", encoding: "utf-8" }
+          ).trim();
+          commits = gitLog || "";
+        } catch {
+          // jewelry repo might not exist on this machine
+        }
+      }
+
+      if (!commits) {
+        console.log("[scheduler] Jewelry changelog skipped — no commits today");
+        job.lastRun = new Date();
+        job.lastResult = "skipped";
+        job.lastDurationMs = Date.now() - startTime;
+        return { status: "skipped" };
+      }
+
+      // 3. Generate Mongolian changelog via Agent
+      const prompt = `${JEWELRY_CHANGELOG_PROMPT}
+
+## Today's Commits
+
+${commits}
+
+Generate the changelog now.`;
+
+      console.log("[scheduler] Generating jewelry changelog...");
+      const response = await this.config.agent.chat(prompt);
+
+      // 4. Send to Telegram (Sukhbat reviews, then forwards to sisters via Messenger)
+      const message = `💎 Шигтгээ шинэчлэл\n\n${response.content}\n\n_Messenger-ээр эгчид дамжуулна уу._`;
+      await this.config.telegram?.sendProactiveMessage(message);
+
+      job.lastRun = new Date();
+      job.lastResult = "sent";
+      job.lastDurationMs = Date.now() - startTime;
+
+      console.log(`[scheduler] Jewelry changelog sent (${Date.now() - startTime}ms)`);
+      return { status: "sent", content: response.content };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] Jewelry changelog failed: ${errMsg}`);
 
       job.lastRun = new Date();
       job.lastResult = "error";

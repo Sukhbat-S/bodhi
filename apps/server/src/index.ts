@@ -876,7 +876,7 @@ async function main() {
 
   app.post("/api/scheduler/trigger", async (c) => {
     const body = await c.req.json<{ type: string; workflowId?: string }>();
-    const validTypes = ["morning", "evening", "weekly", "synthesis", "inbox-triage", "workflow", "persona-refresh"];
+    const validTypes = ["morning", "evening", "weekly", "synthesis", "inbox-triage", "workflow", "persona-refresh", "daily-intel", "jewelry-changelog"];
     if (!body.type || !validTypes.includes(body.type)) {
       return c.json({ error: `type must be one of: ${validTypes.join(", ")}` }, 400);
     }
@@ -895,15 +895,35 @@ async function main() {
   const sessionBus = new EventEmitter();
   sessionBus.setMaxListeners(50);
 
-  // Auto-expire sessions (2h) and messages (1h)
-  setInterval(async () => {
+  // Auto-expire stale sessions (5 min) and messages (1h)
+  let cleanupRunning = false;
+  async function cleanupStaleSessions() {
+    if (cleanupRunning) return;
+    cleanupRunning = true;
     try {
-      const sessionCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
-      await db.delete(activeSessionsTable).where(sql`${activeSessionsTable.lastPingAt} < ${sessionCutoff}`);
-      const msgCutoff = new Date(Date.now() - 60 * 60 * 1000);
+      const sessionCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      // SELECT first so we can emit SSE events for each expired session
+      const stale = await db.select({ id: activeSessionsTable.id })
+        .from(activeSessionsTable)
+        .where(sql`${activeSessionsTable.lastPingAt} < ${sessionCutoff}`);
+      if (stale.length > 0) {
+        await db.delete(activeSessionsTable).where(sql`${activeSessionsTable.lastPingAt} < ${sessionCutoff}`);
+        for (const s of stale) {
+          sessionBus.emit("event", { type: "session:deregistered", sessionId: s.id });
+        }
+        console.log(`[session-cleanup] Expired ${stale.length} stale session(s): ${stale.map((s) => s.id).join(", ")}`);
+      }
+      const msgCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       await db.delete(sessionMessagesTable).where(sql`${sessionMessagesTable.createdAt} < ${msgCutoff}`);
-    } catch { /* silent */ }
-  }, 60_000);
+    } catch (err) {
+      console.error("[session-cleanup]", err instanceof Error ? err.message : err);
+    } finally {
+      cleanupRunning = false;
+    }
+  }
+  // Run immediately on startup, then every 30s
+  cleanupStaleSessions();
+  setInterval(cleanupStaleSessions, 30_000);
 
   app.get("/api/sessions/active", async (c) => {
     const sessions = await db.select().from(activeSessionsTable).orderBy(activeSessionsTable.startedAt);

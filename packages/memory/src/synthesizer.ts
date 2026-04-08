@@ -12,6 +12,7 @@ import type { MemoryService, MemoryResult } from "./service.js";
 export interface SynthesisReport {
   deduped: number;
   connected: number;
+  crossProject: number;
   decayed: number;
   promoted: number;
   autoConfirmed: number;
@@ -77,9 +78,13 @@ export class MemorySynthesizer {
     // Connect runs after dedup to avoid processing duplicates
     const connected = await this.connect();
 
+    // Cross-project intelligence: find patterns that span projects
+    const crossProject = await this.crossProjectConnect();
+
     const report: SynthesisReport = {
       deduped,
       connected,
+      crossProject,
       decayed,
       promoted,
       autoConfirmed,
@@ -91,7 +96,7 @@ export class MemorySynthesizer {
     this.lastRunAt = new Date();
 
     console.log(
-      `[synthesizer] Done: ${deduped} deduped, ${connected} connected, ${decayed} decayed, ${promoted} promoted, ${autoConfirmed} auto-confirmed, ${feedbackApplied} feedback-applied (${(report.durationMs / 1000).toFixed(1)}s)`
+      `[synthesizer] Done: ${deduped} deduped, ${connected} connected, ${crossProject} cross-project, ${decayed} decayed, ${promoted} promoted, ${autoConfirmed} auto-confirmed, ${feedbackApplied} feedback-applied (${(report.durationMs / 1000).toFixed(1)}s)`
     );
 
     return report;
@@ -222,6 +227,125 @@ Write the synthesis:`;
     }
 
     return connected;
+  }
+
+  /**
+   * Cross-project intelligence: find patterns that connect different projects.
+   * Looks for memories tagged with different projects that are semantically similar,
+   * then generates a cross-project insight.
+   */
+  private async crossProjectConnect(): Promise<number> {
+    if (!this.db) return 0;
+
+    let created = 0;
+    try {
+      // Find recent memories from different projects
+      const rows = await this.db.execute(sql`
+        SELECT id, content, type, tags, created_at
+        FROM memories
+        WHERE tags IS NOT NULL
+          AND confidence > 0.3
+          AND created_at > now() - interval '7 days'
+        ORDER BY created_at DESC
+        LIMIT 50
+      `) as unknown as Array<{ id: string; content: string; type: string; tags: string[]; created_at: Date }>;
+
+      if (rows.length < 4) return 0;
+
+      // Group by project tag
+      const projectKeywords = ["bodhi", "jewelry", "shigtgee", "zuusgel"];
+      const byProject = new Map<string, typeof rows>();
+
+      for (const row of rows) {
+        if (!row.tags) continue;
+        for (const tag of row.tags) {
+          const project = projectKeywords.find((k) => tag.toLowerCase().includes(k));
+          if (project) {
+            const list = byProject.get(project) || [];
+            list.push(row);
+            byProject.set(project, list);
+            break;
+          }
+        }
+      }
+
+      // Need memories from at least 2 projects
+      const projects = [...byProject.keys()];
+      if (projects.length < 2) return 0;
+
+      // For each memory in project A, check similarity with memories in project B
+      for (const [projectA, memoriesA] of byProject) {
+        for (const [projectB, memoriesB] of byProject) {
+          if (projectA >= projectB) continue; // avoid duplicates
+
+          // Sample up to 3 from each project
+          const sampleA = memoriesA.slice(0, 3);
+          const sampleB = memoriesB.slice(0, 3);
+
+          // Check semantic similarity between projects
+          for (const memA of sampleA) {
+            const similar = await this.memoryService.findSimilarToMemory(memA.id, 0.70, 5);
+            const crossMatches = similar.filter((s) =>
+              sampleB.some((b) => b.id === s.id)
+            );
+
+            if (crossMatches.length === 0) continue;
+
+            // Found a cross-project connection — generate insight
+            const contextText = [
+              `[${projectA}] ${memA.content}`,
+              ...crossMatches.map((m) => `[${projectB}] ${m.content}`),
+            ].join("\n");
+
+            try {
+              const prompt = `<system>
+You are a cross-project intelligence system. Given memories from different projects, write ONE insight about how a pattern, decision, or learning in one project could benefit the other.
+
+Rules:
+- One sentence, max 60 words
+- Be specific — name the projects and the transferable insight
+- Focus on actionable connections, not abstract similarities
+- Respond with ONLY the insight text, nothing else
+- Do NOT use any tools
+</system>
+
+Memories from different projects:
+${contextText}
+
+Write the cross-project insight:`;
+
+              const task = await this.backend.execute(prompt, {
+                model: "sonnet",
+                tools: "",
+                noSessionPersistence: true,
+              });
+
+              const insight = (task.result || "").trim();
+              if (insight && insight.length > 10 && insight.length < 400) {
+                await this.memoryService.store({
+                  content: insight,
+                  type: "pattern",
+                  source: "synthesis",
+                  importance: 0.8,
+                  tags: ["cross-project", projectA, projectB, "auto-synthesis"],
+                });
+                created++;
+                console.log(`[synthesizer] Cross-project: "${truncate(insight, 80)}"`);
+              }
+            } catch (err) {
+              console.error("[synthesizer] Cross-project connect failed:", err instanceof Error ? err.message : err);
+            }
+
+            // Only one cross-project insight per synthesis cycle to avoid noise
+            if (created >= 1) return created;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[synthesizer] Cross-project scan failed:", err instanceof Error ? err.message : err);
+    }
+
+    return created;
   }
 
   /**

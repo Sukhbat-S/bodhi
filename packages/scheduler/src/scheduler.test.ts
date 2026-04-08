@@ -188,7 +188,7 @@ describe("Scheduler", () => {
       expect(result.status).toBe("sent");
       expect(result.content).toBe("Briefing content here");
       expect(config.agent.chat).toHaveBeenCalled();
-      expect(config.telegram.sendProactiveMessage).toHaveBeenCalledWith(
+      expect(config.telegram!.sendProactiveMessage).toHaveBeenCalledWith(
         expect.stringContaining("Morning Briefing")
       );
     });

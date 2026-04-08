@@ -33,7 +33,7 @@
           },
           {
             "type": "command",
-            "command": "NOW=$(date +%s); PREV=$(cat /tmp/bodhi-ping-ts 2>/dev/null || echo 0); if [ $((NOW - PREV)) -gt 30 ]; then echo $NOW > /tmp/bodhi-ping-ts; FILE=$(cat /tmp/bodhi-current-file 2>/dev/null || echo ''); curl -s -X POST http://localhost:4000/api/sessions/active/bodhi-main/ping -H 'Content-Type: application/json' -d \"{\\\"currentFile\\\":\\\"$FILE\\\"}\" > /dev/null 2>&1; fi; true"
+            "command": "NOW=$(date +%s); PREV=$(cat /tmp/bodhi-ping-ts 2>/dev/null || echo 0); if [ $((NOW - PREV)) -gt 30 ]; then echo $NOW > /tmp/bodhi-ping-ts; SID=$(cat /tmp/bodhi-session-id 2>/dev/null || echo 'bodhi-main'); FILE=$(cat /tmp/bodhi-current-file 2>/dev/null || echo ''); curl -s -X POST http://localhost:4000/api/sessions/active/$SID/ping -H 'Content-Type: application/json' -d \"{\\\"currentFile\\\":\\\"$FILE\\\"}\" > /dev/null 2>&1; fi; true"
           }
         ]
       }

@@ -86,7 +86,7 @@ export default function MissionCard({ mission, onCancel }: Props) {
   const hasTasks = mission.tasks.length > 0;
 
   return (
-    <div className="bg-stone-900/50 border border-stone-800/60 rounded-xl p-4 space-y-3">
+    <div className="bg-stone-900/50 border border-stone-800/60 rounded-xl p-4 space-y-3 hover:border-amber-500/30 hover:shadow-lg hover:shadow-amber-900/10 transition-all duration-200">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {isActive && (

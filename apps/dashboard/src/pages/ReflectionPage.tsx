@@ -195,7 +195,7 @@ function Section({ title, count, defaultOpen = true, children }: {
         <span className="text-xs uppercase tracking-wider text-stone-500 flex items-center gap-2">
           {title}
           {count != null && count > 0 && (
-            <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-amber-500/15 text-amber-400 font-medium">{count}</span>
+            <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-amber-500/15 text-amber-300 font-medium">{count}</span>
           )}
         </span>
         <svg className={`w-4 h-4 text-stone-600 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -528,7 +528,7 @@ export default function ReflectionPage() {
                         <p className="text-sm text-stone-300 leading-relaxed">{heroInsight.text}</p>
                         <button
                           onClick={() => navigate(getInsightAction(heroInsight).to)}
-                          className="mt-2 text-xs text-amber-500/70 hover:text-amber-400 transition-colors"
+                          className="mt-2 text-xs text-amber-400/70 hover:text-amber-300 transition-colors"
                         >
                           {getInsightAction(heroInsight).label} &rarr;
                         </button>
@@ -538,7 +538,7 @@ export default function ReflectionPage() {
                       <p className="text-sm text-stone-400 italic">{getDailyPrompt()}</p>
                       <button
                         onClick={() => { setQuickInput(getDailyPrompt()); quickInputRef.current?.focus(); }}
-                        className="mt-2 text-xs text-amber-500/70 hover:text-amber-400 transition-colors"
+                        className="mt-2 text-xs text-amber-400/70 hover:text-amber-300 transition-colors"
                       >
                         Think about this &rarr;
                       </button>
@@ -638,7 +638,7 @@ export default function ReflectionPage() {
                       {latestBriefing.content}
                     </ReactMarkdown>
                   </div>
-                  <button onClick={() => navigate("/briefings")} className="mt-3 text-xs text-amber-500/70 hover:text-amber-400 transition-colors">
+                  <button onClick={() => navigate("/briefings")} className="mt-3 text-xs text-amber-400/70 hover:text-amber-300 transition-colors">
                     All briefings &rarr;
                   </button>
                 </div>

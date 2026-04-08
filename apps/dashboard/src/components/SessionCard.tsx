@@ -40,7 +40,7 @@ export default function SessionCard({ session, files }: Props) {
   const color = PROJECT_COLORS[session.project] || "bg-blue-500/20 text-blue-400";
 
   return (
-    <div className="bg-stone-900/50 border border-stone-800/60 rounded-xl p-4 space-y-3">
+    <div className="bg-stone-900/50 border border-stone-800/60 rounded-xl p-4 space-y-3 hover:border-amber-500/30 hover:shadow-lg hover:shadow-amber-900/10 transition-all duration-200">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2.5 w-2.5">

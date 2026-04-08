@@ -110,20 +110,50 @@ function getInsightAction(insight: Insight): { label: string; to: string } {
   }
 }
 
-function getContextualGreeting(ownerName: string, phase: TimePhase, unread: number | null, deployState: string | null): { greeting: string; subtext: string } {
+const DAILY_LINES = [
+  "Every line of code is a brick in something only you can build.",
+  "The best tools are the ones you build for yourself.",
+  "Most people consume. You create. That's the difference.",
+  "Your 21-year-old self is building what 30-year-olds wish they had.",
+  "Two markets, two languages, one builder. Keep stacking.",
+  "The compound effect of daily building is invisible until it's not.",
+  "Ship small, ship often. Perfection is the enemy of progress.",
+  "BODHI remembers so you can focus on what matters.",
+  "The gap between idea and execution is just one session.",
+  "While others scroll, you build. The asymmetry is your edge.",
+  "Great products aren't built in a day — they're built day by day.",
+  "Your sister's business runs on code you wrote. That's real impact.",
+  "Mongolia to the world. One commit at a time.",
+  "The best time to plant a tree was 20 years ago. The second best time is this session.",
+  "You're not just writing code. You're writing your story.",
+  "Systems beat motivation. BODHI is your system.",
+  "The rarest skill isn't coding — it's the taste to know what to build.",
+  "Every memory stored is compound interest for your future self.",
+  "Build in public, learn in private, ship regardless.",
+  "The terminal is your workshop. Open it and make something.",
+  "Today's small fix is tomorrow's foundation.",
+  "Clarity comes from building, not planning.",
+  "You're one good session away from the next breakthrough.",
+  "The world needs builders who ship, not dreamers who plan.",
+  "Суухаа гэж байхгүй, босоо гэж байна. Keep building.",
+  "Fun fact: The average person spends 2 hours daily on social media. You spend it building.",
+  "Fun fact: There are ~28M developers worldwide. Fewer than 1% build their own AI companion.",
+  "Fun fact: The first line of code was written in 1843 by Ada Lovelace. You're 183 years into the tradition.",
+  "Fun fact: Ulaanbaatar is the coldest capital city. Your code runs hot regardless.",
+  "Fun fact: The word 'Bodhi' means awakening. Every session is a step toward it.",
+];
+
+function getContextualGreeting(ownerName: string, phase: TimePhase, _unread: number | null, deployState: string | null): { greeting: string; subtext: string } {
   const timeGreeting = phase === "morning" ? "Good morning" : phase === "afternoon" ? "Good afternoon" : phase === "evening" ? "Good evening" : "Good night";
   const greeting = `${timeGreeting}, **${ownerName}**.`;
 
-  const parts: string[] = [];
-  if (unread && unread > 0) parts.push(`${unread} unread email${unread > 1 ? "s" : ""}`);
-  if (deployState === "BUILDING") parts.push("a deploy is building");
-  if (deployState === "ERROR") parts.push("a deploy failed");
+  // Deploy alerts take priority
+  if (deployState === "ERROR") return { greeting, subtext: "A deploy failed — check Vercel." };
+  if (deployState === "BUILDING") return { greeting, subtext: "A deploy is building..." };
 
-  if (parts.length > 0) return { greeting, subtext: `You have ${parts.join(" and ")}.` };
-  if (phase === "morning") return { greeting, subtext: "Here's your day." };
-  if (phase === "afternoon") return { greeting, subtext: "Build mode." };
-  if (phase === "evening") return { greeting, subtext: "Time to reflect." };
-  return { greeting, subtext: "Quiet hours." };
+  // Daily rotating inspiration
+  const dayIndex = Math.floor(Date.now() / 86400000) % DAILY_LINES.length;
+  return { greeting, subtext: DAILY_LINES[dayIndex] };
 }
 
 function deployStateColor(state: string): string {

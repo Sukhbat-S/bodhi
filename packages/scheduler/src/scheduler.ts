@@ -32,6 +32,8 @@ interface GmailDataSource {
 interface CalendarDataSource {
   getBriefingSummary(type: "morning" | "evening"): Promise<string>;
   createEvent?(input: { summary: string; start: string; end: string; description?: string }): Promise<{ id: string }>;
+  listEvents?(timeMin: string, timeMax: string): Promise<Array<{ id: string; summary: string; start: string; end: string }>>;
+  deleteEvent?(eventId: string): Promise<void>;
 }
 
 interface GitHubDataSource {
@@ -488,6 +490,77 @@ export class Scheduler {
       return { status: "sent", content: "Persona 'Right Now' section refreshed" };
     } catch (err) {
       return { status: "error", error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /**
+   * Parse morning briefing tasks and create calendar time blocks.
+   * Cleans up previous [BODHI] events first to stay idempotent.
+   */
+  private async createTimeBlocks(briefingContent: string): Promise<void> {
+    const cal = this.config.calendar!;
+
+    // 1. Clean up any existing [BODHI] events for today
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
+
+    if (cal.listEvents && cal.deleteEvent) {
+      const existing = await cal.listEvents(todayStart, todayEnd);
+      const bodhiEvents = existing.filter((e) => e.summary.startsWith("[BODHI]"));
+      for (const e of bodhiEvents) {
+        await cal.deleteEvent(e.id);
+      }
+      if (bodhiEvents.length > 0) {
+        console.log(`[scheduler] Cleaned ${bodhiEvents.length} old [BODHI] calendar events`);
+      }
+    }
+
+    // 2. Ask the Agent to extract time blocks from the briefing
+    const prompt = `<system>
+Extract the tasks from this morning briefing and create calendar time blocks for today.
+
+Rules:
+- Output ONLY a JSON array of objects with: summary, start, end, description
+- Start and end must be ISO 8601 datetime strings for today (${now.toISOString().split("T")[0]})
+- Prefix every summary with "[BODHI] "
+- Spread tasks across the day starting from the next full hour
+- "quick" tasks = 30 min, "focused" tasks = 1.5h, "deep" tasks = 3h
+- Max 3 events. Skip if a task is vague.
+- Leave 30-min gaps between events
+- If no clear tasks, output an empty array: []
+- Do NOT use any tools
+</system>
+
+Briefing:
+${briefingContent}
+
+Output the JSON array:`;
+
+    const task = await this.config.agent.chat(prompt);
+    const text = task.content || "";
+
+    // 3. Parse JSON from response
+    const match = text.match(/\[[\s\S]*\]/);
+    if (!match) {
+      console.log("[scheduler] No calendar blocks extracted from briefing");
+      return;
+    }
+
+    try {
+      const blocks = JSON.parse(match[0]) as Array<{ summary: string; start: string; end: string; description?: string }>;
+      if (!Array.isArray(blocks) || blocks.length === 0) return;
+
+      let created = 0;
+      for (const block of blocks.slice(0, 3)) {
+        if (!block.summary || !block.start || !block.end) continue;
+        const summary = block.summary.startsWith("[BODHI]") ? block.summary : `[BODHI] ${block.summary}`;
+        await cal.createEvent!({ summary, start: block.start, end: block.end, description: block.description });
+        created++;
+      }
+      console.log(`[scheduler] Created ${created} calendar time blocks from morning briefing`);
+    } catch (err) {
+      console.error("[scheduler] Failed to parse time blocks:", err instanceof Error ? err.message : err);
     }
   }
 
@@ -1223,7 +1296,16 @@ Generate the ${type} briefing now.`;
         }
       }
 
-      // 5c. Push to PWA subscribers
+      // 5c. Auto-create calendar time blocks from morning briefing tasks
+      if (type === "morning" && this.config.calendar?.createEvent && this.config.calendar?.listEvents && this.config.calendar?.deleteEvent) {
+        try {
+          await this.createTimeBlocks(response.content);
+        } catch (err) {
+          console.error("[scheduler] Calendar time-blocking failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
+      // 5d. Push to PWA subscribers
       if (this.config.pushSender) {
         try {
           const pushResult = await this.config.pushSender.sendToAll({

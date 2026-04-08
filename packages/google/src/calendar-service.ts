@@ -135,6 +135,11 @@ export class CalendarService {
     });
   }
 
+  async listEvents(timeMin: string, timeMax: string): Promise<Array<{ id: string; summary: string; start: string; end: string }>> {
+    const events = await this.getEvents(new Date(timeMin), new Date(timeMax));
+    return events.map((e) => ({ id: e.id, summary: e.summary, start: e.start, end: e.end }));
+  }
+
   async ping(): Promise<boolean> {
     try {
       await this.calendar.calendarList.list({ maxResults: 1 });

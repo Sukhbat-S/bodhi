@@ -23,8 +23,6 @@ const navGroups: NavGroup[] = [
     label: "Core",
     items: [
       { to: "/", label: "Reflection", icon: "reflection", end: true },
-      { to: "/chat", label: "Chat", icon: "chat" },
-      { to: "/search", label: "Search", icon: "search" },
       { to: "/missions", label: "Missions", icon: "missions" },
       { to: "/content", label: "Content", icon: "social" },
     ],

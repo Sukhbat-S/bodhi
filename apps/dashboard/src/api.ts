@@ -482,7 +482,7 @@ export function getSupabaseHealth() {
 
 export interface Briefing {
   id: string;
-  type: "morning" | "evening" | "weekly";
+  type: "morning" | "evening" | "weekly" | "daily-intel" | "jewelry-changelog";
   content: string;
   createdAt: string;
 }

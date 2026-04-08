@@ -54,6 +54,11 @@ Call `register_active_session` with:
 
 Save the returned session ID so `/session-save` can deregister it later. Store it as: "Active session ID: {id}" in your working context.
 
+Write the session ID to `/tmp/bodhi-session-id` so the heartbeat hook pings the correct session:
+```bash
+echo "{session-id}" > /tmp/bodhi-session-id
+```
+
 ## Step 2: Load Context
 
 Run these searches in parallel:
@@ -65,6 +70,7 @@ Run these searches in parallel:
 5. **Active sessions**: `get_active_sessions()` — what other tabs are working on
 6. **File conflicts**: `check_file_conflicts()` — which files are being edited by other sessions
 7. **Session messages**: `get_session_messages()` — any coordination messages from other sessions
+8. **Today's briefing**: `curl -s "http://localhost:4000/api/briefings?limit=1"` — show inline if from today
 
 ## Step 3: Present Briefing
 
@@ -75,6 +81,9 @@ BODHI status:
 
 ## {Project} — Session Start
 
+**Today's Briefing** (if exists + from today):
+[Full briefing content — no truncation. This is the actionable morning plan with tasks.]
+
 **Last session**: [summary of what was accomplished]
 
 **Pending items**:
@@ -84,11 +93,8 @@ BODHI status:
 **Key context**:
 - [2-3 most relevant decisions/patterns for this project]
 
-**Today**: [calendar events, unread emails if relevant]
-
 **Other active sessions**: [list any parallel sessions, or "none"]
 **File conflicts**: [warn if another session is editing files you might touch]
-**Messages from other sessions**: [show any coordination messages]
 
 Ready to go. What are we working on?
 ```

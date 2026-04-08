@@ -59,7 +59,7 @@ export interface PushSender {
 }
 
 export interface BriefingStore {
-  save(type: "morning" | "evening" | "weekly", content: string): Promise<void>;
+  save(type: "morning" | "evening" | "weekly" | "daily-intel" | "jewelry-changelog", content: string): Promise<void>;
 }
 
 interface EntityDataSource {
@@ -864,9 +864,15 @@ Generate the daily intelligence brief now.`;
       console.log("[scheduler] Generating daily intel...");
       const response = await this.config.agent.chat(prompt);
 
-      // 5. Send to Telegram
-      const message = `📡 Daily Intel\n\n${response.content}`;
-      await this.config.telegram?.sendProactiveMessage(message);
+      // 5. Store as briefing (dashboard-first) + send to Telegram as backup
+      if (this.config.briefingStore) {
+        try {
+          await this.config.briefingStore.save("daily-intel", response.content);
+        } catch (err) {
+          console.error("[scheduler] Failed to persist daily-intel briefing:", err instanceof Error ? err.message : err);
+        }
+      }
+      await this.config.telegram?.sendProactiveMessage(`📡 Daily Intel\n\n${response.content}`);
 
       // 6. Store notable items in memory
       try {
@@ -988,9 +994,15 @@ Generate the changelog now.`;
       console.log("[scheduler] Generating jewelry changelog...");
       const response = await this.config.agent.chat(prompt);
 
-      // 4. Send to Telegram (Sukhbat reviews, then forwards to sisters via Messenger)
-      const message = `💎 Шигтгээ шинэчлэл\n\n${response.content}\n\n_Messenger-ээр эгчид дамжуулна уу._`;
-      await this.config.telegram?.sendProactiveMessage(message);
+      // 4. Store as briefing (dashboard-first) + send to Telegram as backup
+      if (this.config.briefingStore) {
+        try {
+          await this.config.briefingStore.save("jewelry-changelog", response.content);
+        } catch (err) {
+          console.error("[scheduler] Failed to persist jewelry-changelog briefing:", err instanceof Error ? err.message : err);
+        }
+      }
+      await this.config.telegram?.sendProactiveMessage(`💎 Шигтгээ шинэчлэл\n\n${response.content}\n\n_Messenger-ээр эгчид дамжуулна уу._`);
 
       job.lastRun = new Date();
       job.lastResult = "sent";

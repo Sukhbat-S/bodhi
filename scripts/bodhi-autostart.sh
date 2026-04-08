@@ -24,3 +24,16 @@ if ! curl -s --max-time 1 http://localhost:4000/ > /dev/null 2>&1; then
   echo "Starting BODHI..."
   (cd ~/Documents/bodhi && bash scripts/start.sh > /dev/null 2>&1 &)
 fi
+
+# Auto-register session (background, non-blocking)
+# Waits for server to be ready, then registers a default session
+(
+  for _i in 1 2 3 4 5; do
+    curl -s --max-time 2 http://localhost:4000/api/status > /dev/null 2>&1 && break
+    sleep 3
+  done
+  curl -s -X POST http://localhost:4000/api/sessions/active \
+    -H 'Content-Type: application/json' \
+    -d '{"id":"mac-main","project":"bodhi","description":"Auto-started"}' > /dev/null 2>&1
+  echo "mac-main" > /tmp/bodhi-session-id
+) &

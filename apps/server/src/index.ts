@@ -316,8 +316,8 @@ async function main() {
   // 10. Initialize Scheduler (proactive briefings via cron)
   // Create briefing store adapter for persisting to DB
   const briefingStore = {
-    async save(type: "morning" | "evening" | "weekly", content: string): Promise<void> {
-      await db.insert(briefings).values({ type, content });
+    async save(type: "morning" | "evening" | "weekly" | "daily-intel" | "jewelry-changelog", content: string): Promise<void> {
+      await db.insert(briefings).values({ type: type as any, content });
     },
   };
 

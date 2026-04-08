@@ -9,6 +9,8 @@ export const briefingTypeEnum = pgEnum("briefing_type", [
   "morning",
   "evening",
   "weekly",
+  "daily-intel",
+  "jewelry-changelog",
 ]);
 
 export const briefings = pgTable("briefings", {

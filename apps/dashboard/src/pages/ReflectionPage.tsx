@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   getStatus,
   getMemoryStats,
@@ -91,6 +93,12 @@ const reflectionPrompts = [
 
 function getDailyPrompt(): string {
   return reflectionPrompts[Math.floor(Date.now() / 86400000) % reflectionPrompts.length];
+}
+
+function isTodayBriefing(b: Briefing): boolean {
+  const d = new Date(b.createdAt);
+  const now = new Date();
+  return d.toDateString() === now.toDateString();
 }
 
 function getInsightAction(insight: Insight): { label: string; to: string } {
@@ -375,24 +383,25 @@ export default function ReflectionPage() {
               <div className="rounded-xl border border-amber-500/20 bg-gradient-to-br from-stone-900/90 to-stone-900/60 p-6 shadow-[0_0_20px_rgba(217,119,6,0.06)]">
                 {phase === "morning" && (
                   <div>
-                    <p className="text-xs text-amber-500/70 uppercase tracking-wider mb-3">Morning Focus</p>
+                    <p className="text-xs text-amber-500/70 uppercase tracking-wider mb-3">Morning Briefing</p>
+                    {latestBriefing && isTodayBriefing(latestBriefing) ? (
+                      <div className="prose prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1.5 prose-ul:my-1.5 prose-ol:my-1.5">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {latestBriefing.content}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-sm text-stone-500 mb-2">Briefing generates at 8:00am</p>
+                        <p className="text-sm text-stone-400 italic">{getDailyPrompt()}</p>
+                      </div>
+                    )}
                     {heroInsight && (
-                      <p className="text-sm text-stone-300 leading-relaxed mb-3">{heroInsight.text}</p>
+                      <div className="mt-4 pt-3 border-t border-stone-800/40">
+                        <p className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">{heroInsight.type}</p>
+                        <p className="text-sm text-stone-400 leading-relaxed">{heroInsight.text}</p>
+                      </div>
                     )}
-                    {!heroInsight && latestBriefing && (
-                      <p className="text-sm text-stone-400 leading-relaxed line-clamp-3 mb-3">
-                        {latestBriefing.content.replace(/\*\*/g, "").replace(/\[.*?\]/g, "").slice(0, 200)}
-                      </p>
-                    )}
-                    {!heroInsight && !latestBriefing && (
-                      <p className="text-sm text-stone-400 italic mb-3">{getDailyPrompt()}</p>
-                    )}
-                    <button
-                      onClick={() => navigate("/chat?message=" + encodeURIComponent("Help me plan my day. What should I focus on based on my goals, calendar, and pending items?"))}
-                      className="px-4 py-2 text-sm font-medium text-amber-400 bg-amber-500/10 rounded-lg hover:bg-amber-500/15 transition-colors"
-                    >
-                      Start my day &rarr;
-                    </button>
                   </div>
                 )}
 
@@ -731,18 +740,20 @@ export default function ReflectionPage() {
                 </div>
               </div>
 
-              {/* Latest Briefing */}
-              {latestBriefing && (
+              {/* Latest Briefing — only show if NOT already in hero zone (i.e., not morning or briefing is old) */}
+              {latestBriefing && !(phase === "morning" && isTodayBriefing(latestBriefing)) && (
                 <div className="rounded-xl border border-stone-800/60 bg-stone-900/50 p-5">
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-xs uppercase tracking-wider text-stone-500">Latest Briefing</h2>
                     <span className="text-[10px] text-stone-600">{latestBriefing.type}</span>
                   </div>
-                  <p className="text-sm text-stone-400 leading-relaxed line-clamp-4 whitespace-pre-line">
-                    {latestBriefing.content.replace(/\*\*/g, "").replace(/#{1,3}\s*/g, "").replace(/\[.*?\]\s*/g, "").replace(/^[-•]\s*/gm, "").trim()}
-                  </p>
+                  <div className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-headings:mt-2 prose-headings:mb-1 text-stone-400 line-clamp-6">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {latestBriefing.content}
+                    </ReactMarkdown>
+                  </div>
                   <button onClick={() => navigate("/briefings")} className="mt-3 text-xs text-amber-500/70 hover:text-amber-400 transition-colors">
-                    Read full &rarr;
+                    All briefings &rarr;
                   </button>
                 </div>
               )}

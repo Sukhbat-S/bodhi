@@ -1,0 +1,110 @@
+============================================================
+BRANDING PACKAGE — Ready to Copy-Paste
+April 9, 2026
+============================================================
+
+
+FACEBOOK PAGE BIO
+-----------------
+Sukhbat Sosorbaram
+21 настай builder. AI хэрэгсэл бүтээж, Монголын developer-уудад Claude Code заадаг.
+
+English: 21-year-old builder. I build AI tools and teach Claude Code to Mongolian developers.
+
+Category: Software Developer (change from Digital creator)
+
+
+INSTAGRAM BIO (150 chars)
+-------------------------
+Builder from Mongolia 🇲🇳
+AI tools + Claude Code education
+Building @bodhi_ai — personal AI with memory
+linktr.ee/sukhbat
+
+
+X (TWITTER) BIO — keep current, add:
+-----------------------------------------
+Builder from Mongolia. Building BODHI — personal AI with long-term memory.
+Teaching Claude Code in Mongolian. 21. @anthropic power user.
+
+
+============================================================
+
+
+FACEBOOK COVER PHOTO TEXT (for Canva/Figma — 1640x856)
+------------------------------------------------------
+Left side:
+  SUKHBAT
+  Builder. AI хэрэгсэл. Claude Code.
+
+Right side:
+  Simple icon or code snippet visual
+
+Style: Dark background (#0c0a09), amber accent (#d97706), Inter font
+Keep it minimal — name + what you do. No product branding.
+
+
+INSTAGRAM HIGHLIGHT NAMES
+-------------------------
+1. BODHI — clips/screenshots of the dashboard
+2. Claude Code — carousel lessons teasers
+3. Building — daily progress clips
+4. Миний тухай — about me, intro
+
+
+============================================================
+
+
+FIRST POST IN MONGOLIAN PROGRAMMER GROUP
+----------------------------------------
+(Copy-paste this directly)
+
+Сайн байна уу! 👋
+
+Би Сүхбат, 21 настай developer. Сүүлийн хэдэн сар Claude Code ашиглаж кодоо бичиж байна.
+
+Claude Code гэж юу вэ гэвэл — терминал дээрээ ажилладаг AI туслах. ChatGPT шиг ярилцахын оронд шууд файлуудыг уншиж, засаж, тест хийж, deploy хийж чаддаг.
+
+Монголын developer-уудад зориулж Claude Code сургалтын carousel хичээл хийж байна. Энэ бол эхний хичээл:
+
+🔹 Claude Code гэж юу вэ?
+🔹 Яаж суулгах вэ?
+🔹 Эхний алхмууд
+
+Хэрэгтэй гэж бодвол хадгалаад найздаа share хийгээрэй! Асуулт байвал comment-ээр бичээрэй.
+
+#ClaudeCode #AI #Mongolia #Programming
+
+
+============================================================
+
+
+MONGOLIAN TRANSLATION OF TODAY'S X THREAD (for FB/IG)
+-----------------------------------------------------
+(Post this as a text post on FB page)
+
+Өнөөдөр AI orchestrator бүтээлээ.
+
+Юу хийдэг вэ гэвэл:
+- Dashboard дээрээс зорилго бичнэ
+- AI задлаад олон task болгоно
+- Task бүрт тусдаа git worktree үүсгэнэ
+- Claude Code agent-ууд зэрэг ажиллана
+- Үр дүн шууд browser дээр stream хийгдэнэ
+
+24 commit. Нэг өдөр.
+
+Cerebellum шиг verification хийдэг: үр дүнг биш, prediction-г шалгадаг.
+Алдаа гарвал: шалтгаан олох → засах → дахиж гаргахгүй байх.
+
+Bio > unit test.
+
+#buildinpublic #claudecode
+
+
+============================================================
+
+
+CONTENT PAGE CAPTION — need to add copy button to dashboard
+(This is a code fix, not a text deliverable)
+See ContentPage.tsx fix below.

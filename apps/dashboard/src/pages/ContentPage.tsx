@@ -210,10 +210,20 @@ export default function ContentPage() {
                   )}
                 </div>
 
-                {/* Caption */}
+                {/* Caption — ready to copy */}
                 <div className="bg-stone-800/30 rounded-lg p-4">
-                  <p className="text-[10px] text-stone-600 uppercase tracking-wider mb-1">Caption</p>
-                  <p className="text-sm text-stone-300">{selected.caption}</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] text-stone-600 uppercase tracking-wider">Caption</p>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(selected.caption);
+                      }}
+                      className="text-[10px] text-amber-500 hover:text-amber-400 transition-colors"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <p className="text-sm text-stone-300 whitespace-pre-wrap select-all cursor-text">{selected.caption}</p>
                 </div>
               </div>
 

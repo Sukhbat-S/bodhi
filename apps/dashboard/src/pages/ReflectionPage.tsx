@@ -181,7 +181,7 @@ function Section({ title, count, defaultOpen = true, children }: {
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-xl border border-steppe-shadow/60 bg-steppe-sky/20/50 overflow-hidden">
+    <div className="rounded-xl border border-steppe-shadow/25 bg-steppe-sky/20/50 overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between px-5 py-3 hover:bg-steppe-sky/30/30 transition-colors"
@@ -427,7 +427,7 @@ export default function ReflectionPage() {
                       </div>
                     )}
                     {heroInsight && (
-                      <div className="mt-4 pt-3 border-t border-steppe-shadow/40">
+                      <div className="mt-4 pt-3 border-t border-steppe-shadow/20">
                         <p className="text-[10px] text-steppe-smoke/70 uppercase tracking-wider mb-1">{heroInsight.type}</p>
                         <p className="text-sm text-steppe-smoke leading-relaxed">{heroInsight.text}</p>
                       </div>
@@ -480,7 +480,7 @@ export default function ReflectionPage() {
                         </button>
                       </div>
                     )}
-                    <div className="border-t border-steppe-shadow/40 pt-4">
+                    <div className="border-t border-steppe-shadow/20 pt-4">
                       <p className="text-sm text-steppe-smoke italic">{getDailyPrompt()}</p>
                       <button
                         onClick={() => { setQuickInput(getDailyPrompt()); quickInputRef.current?.focus(); }}
@@ -517,7 +517,7 @@ export default function ReflectionPage() {
                         const isRecent = (Date.now() - new Date(s.lastPingAt).getTime()) < 60000;
                         const dotColor = s.project === "bodhi" ? "bg-amber-400" : s.project.includes("jewelry") ? "bg-violet-400" : "bg-emerald-400";
                         return (
-                          <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-steppe-sky/30/50 border border-steppe-shadow/40">
+                          <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-steppe-sky/30/50 border border-steppe-shadow/20">
                             <span className="relative flex h-2 w-2 shrink-0">
                               {isRecent && <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${dotColor} opacity-75`} />}
                               <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`} />
@@ -679,7 +679,7 @@ export default function ReflectionPage() {
                         <div
                           key={i}
                           onClick={() => navigate(action.to)}
-                          className="rounded-lg border border-steppe-shadow/40 bg-steppe-sky/30/20 p-3 hover:border-amber-500/20 cursor-pointer transition-colors"
+                          className="rounded-lg border border-steppe-shadow/20 bg-steppe-sky/30/20 p-3 hover:border-amber-500/20 cursor-pointer transition-colors"
                         >
                           <div className="flex items-start gap-2">
                             <span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${
@@ -702,7 +702,7 @@ export default function ReflectionPage() {
             <div className="md:col-span-2 space-y-6">
 
               {/* Calendar Today */}
-              <div className="rounded-xl border border-steppe-shadow/60 bg-steppe-sky/20/50 p-5">
+              <div className="rounded-xl border border-steppe-shadow/25 bg-steppe-sky/20/50 p-5">
                 <h2 className="text-xs uppercase tracking-wider text-steppe-smoke/70 mb-3">Today</h2>
                 {events.length > 0 ? (
                   <div className="space-y-2">
@@ -715,7 +715,7 @@ export default function ReflectionPage() {
                   </div>
                 ) : <p className="text-sm text-steppe-smoke/70">No events today.</p>}
                 {freeSlots.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-steppe-shadow/40">
+                  <div className="mt-3 pt-3 border-t border-steppe-shadow/20">
                     <p className="text-[10px] text-steppe-smoke/50 uppercase tracking-wider mb-2">Free Slots</p>
                     <div className="flex flex-wrap gap-2">
                       {freeSlots.slice(0, 3).map((slot, i) => (
@@ -745,7 +745,7 @@ export default function ReflectionPage() {
               )}
 
               {/* Quick Actions */}
-              <div className="rounded-xl border border-steppe-shadow/60 bg-steppe-sky/20/50 p-5">
+              <div className="rounded-xl border border-steppe-shadow/25 bg-steppe-sky/20/50 p-5">
                 <h2 className="text-xs uppercase tracking-wider text-steppe-smoke/70 mb-3">Quick Actions</h2>
                 <div className="grid grid-cols-2 gap-2">
                   {[
@@ -772,7 +772,7 @@ export default function ReflectionPage() {
 
               {/* Latest Briefing — only show if NOT already in hero zone (i.e., not morning or briefing is old) */}
               {latestBriefing && !(phase === "morning" && isTodayBriefing(latestBriefing)) && (
-                <div className="rounded-xl border border-steppe-shadow/60 bg-steppe-sky/20/50 p-5">
+                <div className="rounded-xl border border-steppe-shadow/25 bg-steppe-sky/20/50 p-5">
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-xs uppercase tracking-wider text-steppe-smoke/70">Latest Briefing</h2>
                     <span className="text-[10px] text-steppe-smoke/50">{latestBriefing.type}</span>
@@ -790,7 +790,7 @@ export default function ReflectionPage() {
 
               {/* Knowledge Areas */}
               {stats?.topTags && stats.topTags.length > 0 && (
-                <div className="rounded-xl border border-steppe-shadow/60 bg-steppe-sky/20/50 p-5">
+                <div className="rounded-xl border border-steppe-shadow/25 bg-steppe-sky/20/50 p-5">
                   <h2 className="text-xs uppercase tracking-wider text-steppe-smoke/70 mb-3">Knowledge</h2>
                   <div className="flex flex-wrap gap-1.5">
                     {stats.topTags.slice(0, 8).map((t) => {
@@ -798,7 +798,7 @@ export default function ReflectionPage() {
                       const arrow = trend ? (trend.recent > trend.previous ? " ↑" : trend.recent < trend.previous ? " ↓" : "") : "";
                       const arrowColor = trend ? (trend.recent > trend.previous ? "text-emerald-400" : "text-red-400") : "";
                       return (
-                        <span key={t.tag} className="px-2 py-1 text-[11px] rounded-full bg-steppe-sky/30/80 text-steppe-smoke border border-steppe-shadow/40">
+                        <span key={t.tag} className="px-2 py-1 text-[11px] rounded-full bg-steppe-sky/30/80 text-steppe-smoke border border-steppe-shadow/20">
                           {t.tag} <span className="text-steppe-smoke/70">{t.count}</span>
                           {arrow && <span className={arrowColor}>{arrow}</span>}
                         </span>
@@ -840,7 +840,7 @@ export default function ReflectionPage() {
               value={quickInput}
               onChange={(e) => setQuickInput(e.target.value)}
               placeholder={quickMode === "chat" ? "What's on your mind?" : "Write something to remember..."}
-              className="w-full bg-steppe-sky/20/80 border border-steppe-shadow/60 rounded-xl px-5 py-4 text-sm text-steppe-cream/80 placeholder-steppe-smoke/40 focus:outline-none focus:border-amber-500/40 focus:shadow-[0_0_15px_rgba(217,119,6,0.06)] transition-all backdrop-blur-sm"
+              className="w-full bg-steppe-sky/20/80 border border-steppe-shadow/25 rounded-xl px-5 py-4 text-sm text-steppe-cream/80 placeholder-steppe-smoke/40 focus:outline-none focus:border-amber-500/40 focus:shadow-[0_0_15px_rgba(217,119,6,0.06)] transition-all backdrop-blur-sm"
             />
             {quickInput.trim() && (
               <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-steppe-gold hover:text-amber-400 transition-colors">

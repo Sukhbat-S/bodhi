@@ -244,7 +244,7 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
       model,
       tools: "",
       noSessionPersistence: true,
-      effort: "max",
+      effort: "high", // decomposition is reasoning, not execution — save max for tasks
     });
 
     const text = task.result || "";

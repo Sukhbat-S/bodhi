@@ -25,6 +25,7 @@ const navGroups: NavGroup[] = [
       { to: "/", label: "Reflection", icon: "reflection", end: true },
       { to: "/chat", label: "Chat", icon: "chat" },
       { to: "/search", label: "Search", icon: "search" },
+      { to: "/content", label: "Content", icon: "social" },
     ],
   },
   {
@@ -51,7 +52,6 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/status", label: "Status", icon: "pulse" },
       { to: "/quality", label: "Quality", icon: "quality" },
-      { to: "/content", label: "Content", icon: "social" },
       { to: "/workflows", label: "Workflows", icon: "workflows" },
       { to: "/ecosystem", label: "Ecosystem", icon: "ecosystem" },
       { to: "/notion", label: "Notion", icon: "notion" },

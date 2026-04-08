@@ -167,18 +167,18 @@ function RailItem({ item, expanded, onClose }: { item: NavItem; expanded: boolea
           expanded ? "px-3 py-2" : "justify-center p-2"
         } ${
           isActive
-            ? "bg-steppe-gold/10 text-steppe-gold"
-            : "text-steppe-smoke hover:text-steppe-cream hover:bg-steppe-sky/30"
+            ? "bg-amber-500/10 text-amber-400"
+            : "text-stone-500 hover:text-stone-200 hover:bg-stone-800/50"
         }`
       }
     >
       {({ isActive }) => (
         <>
-          {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-steppe-gold rounded-r" />}
+          {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-amber-500 rounded-r" />}
           {icons[item.icon]}
           {expanded && <span className="text-sm font-medium truncate">{item.label}</span>}
           {item.badge != null && item.badge > 0 && (
-            <span className={`text-[9px] font-semibold bg-steppe-gold/15 text-steppe-gold rounded-full min-w-[16px] text-center ${
+            <span className={`text-[9px] font-semibold bg-amber-500/20 text-amber-400 rounded-full min-w-[16px] text-center ${
               expanded ? "px-1.5 py-0.5 ml-auto" : "absolute -top-0.5 -right-0.5 px-1 py-0"
             }`}>
               {item.badge > 99 ? "99+" : item.badge}
@@ -271,20 +271,20 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Mobile: full sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-56 bg-[var(--steppe-night,#0f1b2d)] border-r border-steppe-shadow/40 flex flex-col transform transition-transform duration-200 ease-out md:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 w-56 bg-stone-950 border-r border-stone-800/60 flex flex-col transform transition-transform duration-200 ease-out md:hidden ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="p-5 border-b border-steppe-shadow/40">
-          <h1 className="text-lg font-bold text-steppe-cream tracking-wide flex items-center gap-2.5">
-            <BodhiLogo className="w-9 h-9 text-steppe-gold" />
+        <div className="p-5 border-b border-stone-800/60">
+          <h1 className="text-lg font-bold text-stone-100 tracking-wide flex items-center gap-2.5">
+            <BodhiLogo className="w-9 h-9 text-amber-600" />
             BODHI
           </h1>
         </div>
         <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
           {visibleGroups.map((group) => (
             <div key={group.label}>
-              <p className="px-3 py-1.5 text-xs uppercase tracking-wider text-steppe-smoke">{group.label}</p>
+              <p className="px-3 py-1.5 text-xs uppercase tracking-wider text-stone-500">{group.label}</p>
               <div className="space-y-0.5 mt-0.5">
                 {group.items.map((item) => (
                   <RailItem key={item.to} item={item} expanded={true} onClose={onClose} />
@@ -293,9 +293,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
           ))}
         </nav>
-        <div className="p-4 border-t border-steppe-shadow/40">
+        <div className="p-4 border-t border-stone-800/60">
           <NotificationToggle />
-          <p className="text-xs text-steppe-smoke/60 mt-2">v{__APP_VERSION__}</p>
+          <p className="text-xs text-stone-600 mt-2">v{__APP_VERSION__}</p>
         </div>
       </aside>
 
@@ -303,14 +303,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <aside
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
-        className={`hidden md:flex flex-col bg-[var(--steppe-night,#0f1b2d)] border-r border-steppe-shadow/40 transition-all duration-200 ease-out overflow-hidden ${
+        className={`hidden md:flex flex-col bg-stone-950 border-r border-stone-800/60 transition-all duration-200 ease-out overflow-hidden ${
           expanded ? "w-52" : "w-14"
         }`}
       >
         {/* Logo */}
-        <div className={`border-b border-steppe-shadow/40 flex items-center ${expanded ? "px-4 py-4 gap-2.5" : "justify-center py-4"}`}>
-          <BodhiLogo className={`text-steppe-gold shrink-0 ${expanded ? "w-7 h-7" : "w-6 h-6"}`} />
-          {expanded && <span className="text-sm font-bold text-steppe-cream tracking-wide">BODHI</span>}
+        <div className={`border-b border-stone-800/60 flex items-center ${expanded ? "px-4 py-4 gap-2.5" : "justify-center py-4"}`}>
+          <BodhiLogo className={`text-amber-600 shrink-0 ${expanded ? "w-7 h-7" : "w-6 h-6"}`} />
+          {expanded && <span className="text-sm font-bold text-stone-100 tracking-wide">BODHI</span>}
         </div>
 
         {/* Nav */}
@@ -318,9 +318,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           {visibleGroups.map((group, gi) => (
             <div key={group.label}>
               {expanded ? (
-                <p className="px-3 py-1 text-[10px] uppercase tracking-wider text-steppe-smoke/60">{group.label}</p>
+                <p className="px-3 py-1 text-[10px] uppercase tracking-wider text-stone-600">{group.label}</p>
               ) : (
-                gi > 0 && <div className="mx-2 my-1 border-t border-steppe-shadow/30" />
+                gi > 0 && <div className="mx-2 my-1 border-t border-stone-800/40" />
               )}
               <div className={expanded ? "space-y-0.5" : "space-y-0.5"}>
                 {group.items.map((item) => (
@@ -332,14 +332,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         </nav>
 
         {/* Footer */}
-        <div className={`border-t border-steppe-shadow/40 ${expanded ? "p-3 space-y-2" : "p-1.5 space-y-1"}`}>
+        <div className={`border-t border-stone-800/60 ${expanded ? "p-3 space-y-2" : "p-1.5 space-y-1"}`}>
           {/* Pin toggle */}
           <button
             onClick={() => setPinned(!pinned)}
             title={pinned ? "Collapse sidebar" : "Pin sidebar"}
             className={`w-full flex items-center gap-2 rounded-lg transition-colors ${
               expanded ? "px-3 py-1.5 justify-start" : "justify-center p-2"
-            } ${pinned ? "text-amber-400" : "text-steppe-smoke/60 hover:text-steppe-cream/70"} hover:bg-steppe-sky/30`}
+            } ${pinned ? "text-amber-400" : "text-stone-600 hover:text-stone-400"} hover:bg-stone-800/50`}
           >
             <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={pinned ? "M9 5l7 7-7 7" : "M15 19l-7-7 7-7"} />
@@ -347,7 +347,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             {expanded && <span className="text-[10px]">{pinned ? "Collapse" : "Pin open"}</span>}
           </button>
 
-          {expanded && <p className="text-[10px] text-steppe-smoke/40 px-3">v{__APP_VERSION__}</p>}
+          {expanded && <p className="text-[10px] text-stone-700 px-3">v{__APP_VERSION__}</p>}
         </div>
       </aside>
     </>

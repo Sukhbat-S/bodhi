@@ -2,78 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Steppe Design Tokens ───────────────────────────────────── */
-:root {
-  --steppe-sky:     #1e3a5f;
-  --steppe-night:   #0f1b2d;
-  --steppe-gold:    #d4a574;
-  --steppe-amber:   #e8b923;
-  --steppe-earth:   #8b6847;
-  --steppe-rust:    #c17a3a;
-  --steppe-sage:    #5a7a5a;
-  --steppe-cream:   #f5f1e8;
-  --steppe-smoke:   #a39b8b;
-  --steppe-shadow:  #2a3548;
-}
-
 @layer base {
   body {
     @apply antialiased;
   }
 
-  /* Scrollbar: steppe tones */
+  /* Custom scrollbar for dark theme */
   ::-webkit-scrollbar {
     @apply w-2;
   }
   ::-webkit-scrollbar-track {
-    background: var(--steppe-night);
+    @apply bg-stone-900;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--steppe-shadow);
-    border-radius: 9999px;
+    @apply bg-stone-700 rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--steppe-sky);
+    @apply bg-stone-600;
   }
-}
-
-/* ─── Steppe Animations ──────────────────────────────────────── */
-
-/* Breathing: the dashboard is alive */
-@keyframes steppe-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.015); }
-}
-.steppe-breathe {
-  animation: steppe-breathe 4s ease-in-out infinite;
-}
-
-/* Gold focus glow */
-@keyframes gold-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 165, 116, 0); }
-  50% { box-shadow: 0 0 20px 2px rgba(212, 165, 116, 0.15); }
-}
-.gold-glow {
-  animation: gold-glow 3s ease-in-out infinite;
-}
-
-/* Ulzii: eternal knot trace for loading */
-@keyframes ulzii-trace {
-  0% { stroke-dashoffset: 800; }
-  100% { stroke-dashoffset: 0; }
-}
-.ulzii-loading path {
-  stroke-dasharray: 800;
-  animation: ulzii-trace 3s ease-in-out infinite;
-}
-
-/* Wind text: progress text appears like wind */
-@keyframes wind-in {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-.wind-in {
-  animation: wind-in 0.3s ease-out;
 }
 
 /* Reflection page animations */

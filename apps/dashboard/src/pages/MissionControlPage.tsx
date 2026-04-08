@@ -190,30 +190,30 @@ export default function MissionControlPage() {
   const completedMissions = missions.filter((m) => m.status !== "dispatching" && m.status !== "running");
 
   return (
-    <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-12 py-10 space-y-10">
-      {/* Header — vast, minimal */}
-      <div className="flex items-end justify-between">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-steppe-cream tracking-tight">Missions</h1>
-          <p className="text-sm text-steppe-smoke/60 mt-2">
-            {sessions.length} session{sessions.length !== 1 ? "s" : ""}
-            {activeMissions.length > 0 && ` \u00b7 ${activeMissions.length} running`}
+          <h1 className="text-2xl font-bold text-stone-100">Mission Control</h1>
+          <p className="text-sm text-stone-500 mt-1">
+            {sessions.length} session{sessions.length !== 1 ? "s" : ""} active
+            {activeMissions.length > 0 && ` \u00b7 ${activeMissions.length} mission${activeMissions.length !== 1 ? "s" : ""} running`}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${connected ? "bg-steppe-sage" : "bg-steppe-rust"}`} />
-          <span className="text-[11px] text-steppe-smoke/40">{connected ? "Live" : "Offline"}</span>
+          <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-400" : "bg-red-400"}`} />
+          <span className="text-xs text-stone-500">{connected ? "Connected" : "Disconnected"}</span>
         </div>
       </div>
 
-      {/* Command Bar — the horizon */}
+      {/* Command Bar */}
       <CommandBar onDispatch={handleDispatch} disabled={dispatching} />
 
       {/* Active Missions */}
       {activeMissions.length > 0 && (
-        <section className="space-y-4">
-          <h2 className="text-[11px] font-medium text-steppe-gold/60 uppercase tracking-[0.15em]">Running</h2>
-          <div className="space-y-4">
+        <section>
+          <h2 className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-3">Running</h2>
+          <div className="space-y-3">
             {activeMissions.map((m) => (
               <MissionCard key={m.id} mission={m} onCancel={handleCancel} />
             ))}
@@ -221,11 +221,11 @@ export default function MissionControlPage() {
         </section>
       )}
 
-      {/* Sessions */}
+      {/* Active Sessions */}
       {sessions.length > 0 && (
-        <section className="space-y-4">
-          <h2 className="text-[11px] font-medium text-steppe-smoke/40 uppercase tracking-[0.15em]">Sessions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <section>
+          <h2 className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-3">Sessions</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {sessions.map((s) => (
               <SessionCard key={s.id} session={s} files={files} />
             ))}
@@ -235,27 +235,27 @@ export default function MissionControlPage() {
 
       {/* Messages */}
       {messages.length > 0 && (
-        <section className="space-y-4">
-          <h2 className="text-[11px] font-medium text-steppe-smoke/40 uppercase tracking-[0.15em]">Messages</h2>
-          <div className="bg-steppe-sky/15 border border-steppe-shadow/30 rounded-xl p-5 max-h-48 overflow-y-auto space-y-2.5">
+        <section>
+          <h2 className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-3">Messages</h2>
+          <div className="bg-stone-900/50 border border-stone-800/60 rounded-xl p-4 max-h-48 overflow-y-auto space-y-2">
             {messages.slice(-20).map((msg) => (
-              <div key={msg.id} className="flex items-start gap-2.5 text-xs">
-                <span className={`font-mono shrink-0 ${msg.toSession ? "text-steppe-smoke" : "text-steppe-gold"}`}>
+              <div key={msg.id} className="flex items-start gap-2 text-xs">
+                <span className={`font-mono shrink-0 ${msg.toSession ? "text-stone-500" : "text-amber-500"}`}>
                   {msg.fromSession}
                 </span>
-                <span className="text-steppe-smoke/30">{msg.toSession ? `\u2192 ${msg.toSession}` : "all"}</span>
-                <span className="text-steppe-cream/70 break-all">{msg.message}</span>
+                <span className="text-stone-600">{msg.toSession ? `\u2192 ${msg.toSession}` : "(broadcast)"}</span>
+                <span className="text-stone-300 break-all">{msg.message}</span>
               </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* Completed */}
+      {/* Completed Missions */}
       {completedMissions.length > 0 && (
-        <section className="space-y-4">
-          <h2 className="text-[11px] font-medium text-steppe-smoke/40 uppercase tracking-[0.15em]">Completed</h2>
-          <div className="space-y-4">
+        <section>
+          <h2 className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-3">Completed</h2>
+          <div className="space-y-3">
             {completedMissions.map((m) => (
               <MissionCard key={m.id} mission={m} onCancel={handleCancel} />
             ))}
@@ -263,18 +263,12 @@ export default function MissionControlPage() {
         </section>
       )}
 
-      {/* Empty — the open steppe */}
+      {/* Empty State */}
       {sessions.length === 0 && missions.length === 0 && (
-        <div className="text-center py-24 space-y-4">
-          {/* Minimal ger silhouette */}
-          <svg width="80" height="48" viewBox="0 0 80 48" className="mx-auto opacity-20">
-            <path d="M10 40 L40 12 L70 40 Z" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-steppe-gold" />
-            <line x1="40" y1="12" x2="40" y2="6" stroke="currentColor" strokeWidth="1" className="text-steppe-gold" />
-            <line x1="5" y1="40" x2="75" y2="40" stroke="currentColor" strokeWidth="1" className="text-steppe-smoke" />
-          </svg>
-          <p className="text-steppe-smoke/50 text-sm">Your horizon is clear.</p>
-          <p className="text-steppe-smoke/30 text-xs">
-            Dispatch a mission above, or let the morning briefing run.
+        <div className="text-center py-16">
+          <p className="text-stone-500 mb-2">No active sessions or missions.</p>
+          <p className="text-xs text-stone-600">
+            Type a goal above to dispatch work, or open a terminal and run <code className="text-amber-500">/session-start</code>
           </p>
         </div>
       )}

@@ -200,9 +200,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     return localStorage.getItem("sidebar-pinned") === "true";
   });
   const [hovering, setHovering] = useState(false);
-  const [mode, setMode] = useState<"personal" | "builder">(() => {
-    return (localStorage.getItem("sidebar-mode") as "personal" | "builder") || "personal";
-  });
   const [pendingCount, setPendingCount] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [prCount, setPrCount] = useState(0);
@@ -215,9 +212,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     localStorage.setItem("sidebar-pinned", String(pinned));
   }, [pinned]);
 
-  useEffect(() => {
-    localStorage.setItem("sidebar-mode", mode);
-  }, [mode]);
 
   const fetchPendingCount = useCallback(async () => {
     try {
@@ -256,9 +250,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     })),
   }));
 
-  const visibleGroups = mode === "personal"
-    ? groupsWithBadges.filter((g) => g.label === "Core" || g.label === "Knowledge")
-    : groupsWithBadges;
+  const visibleGroups = groupsWithBadges;
 
   return (
     <>
@@ -334,38 +326,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Footer */}
         <div className={`border-t border-stone-800/60 ${expanded ? "p-3 space-y-2" : "p-1.5 space-y-1"}`}>
-          {/* Mode toggle */}
-          {expanded ? (
-            <div className="flex rounded-lg bg-stone-900/80 p-0.5">
-              <button
-                onClick={() => setMode("personal")}
-                className={`flex-1 text-[10px] py-1 rounded-md transition-colors ${
-                  mode === "personal" ? "bg-amber-500/15 text-amber-400 font-medium" : "text-stone-500 hover:text-stone-400"
-                }`}
-              >
-                Personal
-              </button>
-              <button
-                onClick={() => setMode("builder")}
-                className={`flex-1 text-[10px] py-1 rounded-md transition-colors ${
-                  mode === "builder" ? "bg-amber-500/15 text-amber-400 font-medium" : "text-stone-500 hover:text-stone-400"
-                }`}
-              >
-                Builder
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setMode(mode === "personal" ? "builder" : "personal")}
-              title={mode === "personal" ? "Switch to Builder" : "Switch to Personal"}
-              className="w-full flex justify-center p-2 rounded-lg text-stone-500 hover:text-stone-300 hover:bg-stone-800/50 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={mode === "personal" ? "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" : "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"} />
-              </svg>
-            </button>
-          )}
-
           {/* Pin toggle */}
           <button
             onClick={() => setPinned(!pinned)}

@@ -12,6 +12,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import cron from "node-cron";
 import { Orchestrator } from "./orchestrator.js";
 import { DesignAuditor } from "./design-auditor.js";
 import { fileURLToPath } from "node:url";
@@ -2251,6 +2252,87 @@ Return ONLY valid JSON:
   }
 
   console.log("\n🌳  BODHI is online.\n");
+
+  // ─── Overnight Autonomous Jobs ────────────────────────────
+  const tz = config.TIMEZONE || "Asia/Ulaanbaatar";
+
+  // 2:00 AM — Design self-audit (screenshot all pages, AI review)
+  cron.schedule("0 2 * * *", async () => {
+    console.log("[overnight] Running design audit...");
+    try {
+      const audits = await designAuditor.auditAll();
+      const avg = audits.reduce((s, a) => s + a.score, 0) / audits.length;
+      console.log(`[overnight] Design audit complete: avg score ${avg.toFixed(1)}/10`);
+      // Store results as a briefing so dashboard shows them
+      if (briefingStore) {
+        const report = audits.map((a) => `**${a.page}** ${a.score}/10\n${a.issues.map((i) => `- ${i}`).join("\n")}`).join("\n\n");
+        await briefingStore.save("morning", `## Nightly Design Audit\n\n${report}`).catch(() => {});
+      }
+    } catch (err) {
+      console.error("[overnight] Design audit failed:", err instanceof Error ? err.message : err);
+    }
+  }, { timezone: tz });
+  console.log("  Overnight: design audit at 2:00 AM");
+
+  // 3:00 AM — Generate next carousel lesson (if < 30 done)
+  cron.schedule("0 3 * * *", async () => {
+    console.log("[overnight] Generating next carousel lesson...");
+    try {
+      const result = await scheduler.trigger("content-generate");
+      console.log(`[overnight] Carousel: ${result.status}`);
+    } catch (err) {
+      console.error("[overnight] Carousel generation failed:", err instanceof Error ? err.message : err);
+    }
+  }, { timezone: tz });
+  console.log("  Overnight: carousel generation at 3:00 AM");
+
+  // 4:00 AM — Generate another lesson (build up content backlog)
+  cron.schedule("0 4 * * *", async () => {
+    console.log("[overnight] Generating another carousel lesson...");
+    try {
+      const result = await scheduler.trigger("content-generate");
+      console.log(`[overnight] Carousel: ${result.status}`);
+    } catch (err) {
+      console.error("[overnight] Carousel generation failed:", err instanceof Error ? err.message : err);
+    }
+  }, { timezone: tz });
+  console.log("  Overnight: second carousel at 4:00 AM");
+
+  // 5:00 AM — Engineering health check (build, tests, type errors)
+  cron.schedule("0 5 * * *", async () => {
+    console.log("[overnight] Running engineering health check...");
+    try {
+      const result = await backend.execute(
+        "Run these checks on the BODHI monorepo and report results:\n1. npm run build — does it pass? Any errors?\n2. npx vitest run — how many tests pass/fail?\n3. Count TODO/FIXME/HACK comments across all .ts files\n4. Check npm audit for high/critical vulnerabilities\n5. Check git status for uncommitted changes\n\nReport as a structured summary: PASS/FAIL for each check with details.",
+        { cwd: config.BODHI_PROJECT_DIR || process.cwd(), model: "sonnet", permissionMode: "plan", maxTurns: 10, effort: "medium", noSessionPersistence: true }
+      );
+      console.log(`[overnight] Engineering check: ${result.status}`);
+      if (briefingStore && result.result) {
+        await briefingStore.save("morning", `## Nightly Engineering Audit\n\n${result.result}`).catch(() => {});
+      }
+    } catch (err) {
+      console.error("[overnight] Engineering check failed:", err instanceof Error ? err.message : err);
+    }
+  }, { timezone: tz });
+  console.log("  Overnight: engineering health at 5:00 AM");
+
+  // 6:00 AM — Security scan (check for exposed secrets, dependency vulns)
+  cron.schedule("0 6 * * *", async () => {
+    console.log("[overnight] Running security scan...");
+    try {
+      const result = await backend.execute(
+        "Run a security check on the BODHI monorepo:\n1. Search for hardcoded secrets: grep -r 'password\\|secret\\|api_key\\|token' in .ts/.tsx/.json files (not node_modules, not .env)\n2. Verify .env is NOT tracked: git ls-files .env\n3. Run npm audit and count high/critical vulnerabilities\n4. Check if any new files contain sensitive patterns\n5. Verify .gitignore covers: .env, .google-token.json, *.key, *.pem\n\nReport: SAFE or ALERT for each check. If any ALERT, list the specific file and line.",
+        { cwd: config.BODHI_PROJECT_DIR || process.cwd(), model: "sonnet", permissionMode: "plan", maxTurns: 8, effort: "medium", noSessionPersistence: true }
+      );
+      console.log(`[overnight] Security scan: ${result.status}`);
+      if (briefingStore && result.result) {
+        await briefingStore.save("morning", `## Nightly Security Scan\n\n${result.result}`).catch(() => {});
+      }
+    } catch (err) {
+      console.error("[overnight] Security scan failed:", err instanceof Error ? err.message : err);
+    }
+  }, { timezone: tz });
+  console.log("  Overnight: security scan at 6:00 AM");
 
   // Graceful shutdown
   const shutdown = async () => {

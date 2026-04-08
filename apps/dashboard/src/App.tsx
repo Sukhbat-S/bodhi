@@ -50,7 +50,7 @@ export default function App() {
     <div className="flex h-screen overflow-hidden">
       <CommandPalette />
       {/* Mobile header */}
-      <header className="fixed top-0 left-0 right-0 z-40 flex items-center h-14 px-4 bg-stone-950 border-b border-stone-800/60 md:hidden">
+      <header className="fixed top-0 left-0 right-0 z-40 flex items-center h-14 px-4 bg-[var(--steppe-night,#0f1b2d)] border-b border-stone-800/60 md:hidden">
         <button
           onClick={() => setSidebarOpen(true)}
           className="p-2 -ml-2 text-stone-400 hover:text-stone-200"
@@ -74,7 +74,7 @@ export default function App() {
       <Pet />
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto pt-14 md:pt-0 bg-stone-950">
+      <main className="flex-1 overflow-y-auto pt-14 md:pt-0 bg-[var(--steppe-night,#0f1b2d)]">
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<ReflectionPage />} />

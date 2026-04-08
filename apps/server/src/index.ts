@@ -364,7 +364,7 @@ async function main() {
     contentStore,
     missionDispatcher: {
       async dispatch(goal: string, model?: string) {
-        const res = await fetch("http://localhost:4000/api/missions/dispatch", {
+        const res = await fetch(`http://localhost:${config.PORT || 4000}/api/missions/dispatch`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ goal, model }),

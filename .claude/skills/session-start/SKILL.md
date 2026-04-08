@@ -25,7 +25,7 @@ Call `get_bodhi_status` first.
 
 Test Bridge with a quick ping:
 ```bash
-curl -s -X POST http://localhost:4000/api/chat -H "Content-Type: application/json" -d '{"message":"ping"}' --max-time 15
+curl -s -X POST http://localhost:${BODHI_PORT:-4000}/api/chat -H "Content-Type: application/json" -d '{"message":"ping"}' --max-time 15
 ```
 
 **If error (exit code 1, auth, timeout):**
@@ -70,7 +70,8 @@ Run these searches in parallel:
 5. **Active sessions**: `get_active_sessions()` — what other tabs are working on
 6. **File conflicts**: `check_file_conflicts()` — which files are being edited by other sessions
 7. **Session messages**: `get_session_messages()` — any coordination messages from other sessions
-8. **Today's briefing**: `curl -s "http://localhost:4000/api/briefings?limit=1"` — show inline if from today
+8. **Today's briefing**: `curl -s "http://localhost:${BODHI_PORT:-4000}/api/briefings?limit=1"` — show inline if from today
+9. **Mission history**: `curl -s "http://localhost:${BODHI_PORT:-4000}/api/missions"` — show recent completed/running missions
 
 ## Step 3: Present Briefing
 
@@ -93,6 +94,7 @@ BODHI status:
 **Key context**:
 - [2-3 most relevant decisions/patterns for this project]
 
+**Missions**: [running/completed mission count, or "none"]
 **Other active sessions**: [list any parallel sessions, or "none"]
 **File conflicts**: [warn if another session is editing files you might touch]
 

@@ -3,7 +3,7 @@
 // Wraps BODHI's REST endpoints (localhost:4000) for MCP tools
 // ============================================================
 
-const BODHI_BASE_URL = process.env.BODHI_URL || "http://localhost:4000";
+const BODHI_BASE_URL = process.env.BODHI_URL || `http://localhost:${process.env.BODHI_PORT || "4000"}`;
 
 /** Generic fetch wrapper with error handling */
 async function bodhiFetch<T>(

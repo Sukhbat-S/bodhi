@@ -86,7 +86,7 @@ function buildSlideHTML(
   isLast: boolean,
 ): string {
   const codeBlock = slide.code
-    ? `<div class="code-block"><pre><code>${escapeHTML(slide.code)}</code></pre></div>`
+    ? `<div class="code-block"><div class="code-header"><span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span></div><pre><code>${escapeHTML(slide.code)}</code></pre></div>`
     : "";
 
   const bodyHTML = escapeHTML(slide.body).replace(/\n/g, "<br>");
@@ -94,6 +94,10 @@ function buildSlideHTML(
   const progressDots = Array.from({ length: totalSlides }, (_, i) =>
     `<span class="dot ${i + 1 === slideIndex ? 'active' : ''}"></span>`
   ).join("");
+
+  // Alternate accent colors per slide for visual variety
+  const accents = ["#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4"];
+  const accent = accents[(slideIndex - 1) % accents.length];
 
   return `<!DOCTYPE html>
 <html>
@@ -113,26 +117,61 @@ function buildSlideHTML(
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative;
+  }
+
+  /* Gradient glow in corner */
+  body::before {
+    content: '';
+    position: absolute;
+    top: -200px;
+    right: -200px;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, ${accent}15, transparent 70%);
+    pointer-events: none;
+  }
+
+  body::after {
+    content: '';
+    position: absolute;
+    bottom: -150px;
+    left: -150px;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, ${accent}08, transparent 70%);
+    pointer-events: none;
+  }
+
+  .accent-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, ${accent}, ${accent}00);
   }
 
   .header {
-    padding: 40px 50px 0;
+    padding: 48px 60px 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    position: relative;
+    z-index: 1;
   }
 
   .brand {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
   }
 
   .brand-icon {
-    width: 36px;
-    height: 36px;
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-    border-radius: 8px;
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, ${accent}, ${accent}cc);
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -142,42 +181,72 @@ function buildSlideHTML(
   }
 
   .brand-text {
-    font-size: 16px;
+    font-size: 17px;
     font-weight: 600;
-    color: #a8a29e;
+    color: #78716c;
     letter-spacing: 0.5px;
   }
 
   .lesson-badge {
     font-size: 13px;
     font-weight: 600;
-    color: #d97706;
-    background: rgba(217, 119, 6, 0.12);
-    padding: 6px 14px;
+    color: ${accent};
+    background: ${accent}18;
+    padding: 7px 16px;
     border-radius: 20px;
-    letter-spacing: 0.3px;
+    border: 1px solid ${accent}30;
+  }
+
+  .slide-number {
+    position: absolute;
+    top: 48px;
+    left: 60px;
+    font-size: 120px;
+    font-weight: 900;
+    color: #1c191708;
+    line-height: 1;
+    pointer-events: none;
+    z-index: 0;
   }
 
   .content {
     flex: 1;
-    padding: 40px 50px;
+    padding: 50px 60px 30px;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 28px;
+    gap: 24px;
+    position: relative;
+    z-index: 1;
   }
 
   .title {
-    font-size: ${isFirst ? '42px' : '36px'};
+    font-size: ${isFirst ? '46px' : '40px'};
     font-weight: 800;
-    line-height: 1.2;
+    line-height: 1.15;
     color: #fafaf9;
     letter-spacing: -0.5px;
+    max-width: 900px;
+  }
+
+  .title-accent {
+    display: inline;
+    background: linear-gradient(135deg, ${accent}, ${accent}bb);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .divider {
+    width: 60px;
+    height: 3px;
+    background: ${accent};
+    border-radius: 2px;
   }
 
   .body {
     font-size: 22px;
-    line-height: 1.6;
+    line-height: 1.65;
     color: #a8a29e;
     max-width: 920px;
   }
@@ -185,13 +254,31 @@ function buildSlideHTML(
   .code-block {
     background: #1c1917;
     border: 1px solid #292524;
-    border-radius: 12px;
-    padding: 24px 28px;
+    border-radius: 14px;
     overflow: hidden;
   }
 
+  .code-header {
+    padding: 12px 20px;
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid #292524;
+  }
+
+  .code-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #292524;
+  }
+
+  .code-dot:nth-child(1) { background: #ef4444; }
+  .code-dot:nth-child(2) { background: #f59e0b; }
+  .code-dot:nth-child(3) { background: #22c55e; }
+
   .code-block pre {
     margin: 0;
+    padding: 20px 24px;
   }
 
   .code-block code {
@@ -204,21 +291,25 @@ function buildSlideHTML(
   }
 
   .footer {
-    padding: 0 50px 36px;
+    padding: 0 60px 44px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    position: relative;
+    z-index: 1;
   }
 
   .watermark {
     font-size: 14px;
-    color: #57534e;
+    color: #44403c;
     font-weight: 500;
+    letter-spacing: 0.5px;
   }
 
   .dots {
     display: flex;
     gap: 8px;
+    align-items: center;
   }
 
   .dot {
@@ -229,41 +320,45 @@ function buildSlideHTML(
   }
 
   .dot.active {
-    background: #d97706;
-    width: 24px;
+    background: ${accent};
+    width: 28px;
     border-radius: 4px;
   }
 
   .cta {
-    font-size: 20px;
-    font-weight: 600;
-    color: #d97706;
+    font-size: 22px;
+    font-weight: 700;
+    color: ${accent};
     text-align: center;
-    margin-top: 8px;
+    margin-top: 12px;
   }
 
   .swipe-hint {
     font-size: 15px;
     color: #57534e;
     text-align: center;
+    letter-spacing: 1px;
   }
 </style>
 </head>
 <body>
+  <div class="accent-line"></div>
+
   <div class="header">
     <div class="brand">
       <div class="brand-icon">AI</div>
       <span class="brand-text">AI Бүтээгч</span>
     </div>
-    <span class="lesson-badge">Хичээл #${lessonNumber}</span>
+    <span class="lesson-badge">${slideIndex}/${totalSlides}</span>
   </div>
 
   <div class="content">
     <div class="title">${escapeHTML(slide.title)}</div>
+    <div class="divider"></div>
     <div class="body">${bodyHTML}</div>
     ${codeBlock}
-    ${isFirst ? '<p class="swipe-hint">Баруун тийш шударна уу →</p>' : ''}
-    ${isLast ? '<p class="cta">Хадгалаад найздаа илгээгээрэй!</p>' : ''}
+    ${isFirst ? '<p class="swipe-hint">БАРУУН ТИЙШ ШУДАРНА УУ →</p>' : ''}
+    ${isLast ? '<p class="cta">Хадгалаад найздаа илгээгээрэй! 🔥</p>' : ''}
   </div>
 
   <div class="footer">

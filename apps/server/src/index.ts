@@ -398,7 +398,8 @@ async function main() {
   // Global error handler — return JSON errors instead of HTML
   app.onError((err, c) => {
     console.error(`[api] ${c.req.method} ${c.req.path} error:`, err.message);
-    return c.json({ error: err.message }, 500);
+    // Don't leak internal error details to clients
+    return c.json({ error: "Internal server error" }, 500);
   });
 
   // Root: serve dashboard when built, else JSON health check
@@ -1945,7 +1946,11 @@ Return ONLY valid JSON:
   // Serve generated carousel images
   app.get("/content/images/:filename", async (c) => {
     const filename = c.req.param("filename");
-    const filePath = path.resolve(process.cwd(), "data/content", filename);
+    // Security: prevent path traversal
+    if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
+      return c.json({ error: "Invalid filename" }, 400);
+    }
+    const filePath = path.join(process.cwd(), "data", "content", filename);
     if (!fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
     const buffer = fs.readFileSync(filePath);
     return new Response(buffer, { headers: { "Content-Type": "image/png", "Cache-Control": "no-cache" } });

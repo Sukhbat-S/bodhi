@@ -488,8 +488,11 @@ Fix the root cause identified above and try again. Do not repeat the same mistak
   }
 
   private createWorktree(taskId: string): string {
-    const worktreePath = join(this.basePath, "..", `worktree-${taskId}`);
-    const branchName = `task-${taskId}`;
+    // Security: prevent command injection via taskId
+    const safeId = taskId.replace(/[^a-zA-Z0-9-]/g, "");
+    if (!safeId) throw new Error("Invalid task ID");
+    const worktreePath = join(this.basePath, "..", `worktree-${safeId}`);
+    const branchName = `task-${safeId}`;
 
     if (existsSync(worktreePath)) {
       execSync(`git worktree remove "${worktreePath}" --force`, { cwd: this.basePath, stdio: "ignore" });
@@ -505,7 +508,8 @@ Fix the root cause identified above and try again. Do not repeat the same mistak
 
   private mergeWorktree(task: MissionTask): void {
     if (!task.worktreePath) return;
-    const branchName = `task-${task.id}`;
+    const safeId = task.id.replace(/[^a-zA-Z0-9-]/g, "");
+    const branchName = `task-${safeId}`;
 
     try {
       // Check if branch has changes

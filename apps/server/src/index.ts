@@ -13,6 +13,7 @@ import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Orchestrator } from "./orchestrator.js";
+import { DesignAuditor } from "./design-auditor.js";
 import { fileURLToPath } from "node:url";
 
 // Load .env from monorepo root (npm workspaces may set cwd to apps/server/)
@@ -631,6 +632,19 @@ async function main() {
     // TODO: orchestrator.cancel(id) when implemented
     sessionBus.emit("event", { type: "mission:cancelled", missionId: id });
     return c.json({ cancelled: true });
+  });
+
+  // API: Design Audit
+  const designAuditor = new DesignAuditor(backend, config.PORT || 4000);
+
+  app.post("/api/design/audit", async (c) => {
+    const body = await c.req.json<{ page?: string }>().catch(() => ({ page: undefined }));
+    if (body.page) {
+      const result = await designAuditor.auditPage(body.page);
+      return c.json(result);
+    }
+    const results = await designAuditor.auditAll();
+    return c.json({ audits: results });
   });
 
   // API: Memory endpoints

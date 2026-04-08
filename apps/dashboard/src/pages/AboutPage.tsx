@@ -377,7 +377,7 @@ export default function AboutPage() {
             Memories. Gestures.<br />Voice. Vision.
           </h1>
           <p className="text-lg md:text-xl text-stone-400 mb-3 max-w-xl mx-auto leading-relaxed">
-            A personal AI companion that remembers every decision, learns from every conversation, and adapts to how you work.
+            I built a personal AI that remembers every decision, learns from every conversation, and adapts to how I work. Open source so you can build yours.
           </p>
           <p className="text-sm text-stone-600 mb-10">Built by Sukhbat Sosorbaram / 21 / Ulaanbaatar, Mongolia</p>
           <div className="flex items-center justify-center gap-4 mb-14">
@@ -477,7 +477,7 @@ export default function AboutPage() {
         <section className="py-16 px-6">
           <div className="max-w-4xl mx-auto text-center">
             <p className="text-xs uppercase tracking-wider text-amber-500 mb-3">Command Center</p>
-            <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">Your entire digital life, one screen</h2>
+            <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">My entire digital life, one screen</h2>
             <p className="text-sm text-stone-500 mb-10">15+ data sources. Real-time. No tab switching.</p>
             <DashboardMock />
             <div className="flex flex-wrap justify-center gap-2 mt-8">
@@ -537,7 +537,7 @@ export default function AboutPage() {
             {/* Tier 1 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <FeatureCard icon={icons.memory} title="Persistent Memory" description="Every conversation is mined for facts, decisions, and patterns. Stored with semantic search — meaning matching, not keywords." />
-              <FeatureCard icon={icons.context} title="Context Engine" description="Connects to Gmail, Calendar, GitHub, Notion, and more. Every response is informed by your real world." />
+              <FeatureCard icon={icons.context} title="Context Engine" description="Connects to my Gmail, Calendar, GitHub, Notion, and more. Every response is informed by my real world — not just the chat." />
               <FeatureCard icon={icons.briefing} title="Proactive Briefings" description="Morning briefings with calendar, inbox, and patterns. Delivered to Telegram — insights that come to you." />
             </div>
             {/* Tier 2 */}
@@ -712,7 +712,7 @@ export default function AboutPage() {
           <div className="max-w-2xl mx-auto text-center">
             <p className="text-xs uppercase tracking-wider text-amber-500 mb-6">The Builder</p>
             <p className="text-stone-400 leading-relaxed mb-6">
-              BODHI is built by Sukhbat Sosorbaram — a 21-year-old developer in Ulaanbaatar, Mongolia. Every feature shipped, every architecture decision, and every line of code is documented in BODHI's own memory. This project is built in public.
+              I'm Sukhbat — a 21-year-old developer in Ulaanbaatar, Mongolia. I built BODHI because I needed it. Every tool I tried forgot me after the session ended. So I built one that doesn't. It's my personal AI companion first — open source so others can build theirs too.
             </p>
             <a href="https://x.com/SukhbatSosorba3" target="_blank" rel="noreferrer"
               className="inline-block px-6 py-3 rounded-lg bg-amber-500/10 text-amber-400 font-medium hover:bg-amber-500/20 transition-colors text-sm border border-amber-500/20">

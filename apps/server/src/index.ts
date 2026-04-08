@@ -12,6 +12,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { Orchestrator } from "./orchestrator.js";
 import { fileURLToPath } from "node:url";
 
 // Load .env from monorepo root (npm workspaces may set cwd to apps/server/)
@@ -361,6 +362,16 @@ async function main() {
     personaPath,
     metaService,
     contentStore,
+    missionDispatcher: {
+      async dispatch(goal: string, model?: string) {
+        const res = await fetch("http://localhost:4000/api/missions/dispatch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ goal, model }),
+        });
+        return res.json() as Promise<{ missionId: string }>;
+      },
+    },
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings + workflows)");
 
@@ -522,6 +533,96 @@ async function main() {
         ? task.completedAt.getTime() - task.startedAt.getTime()
         : null,
     });
+  });
+
+  // API: Missions — dispatch goals to Orchestrator with streaming progress via SSE
+  const orchestrator = new Orchestrator(backend, config.BODHI_PROJECT_DIR || process.cwd());
+  const missionHistory: Array<{
+    id: string; goal: string; model: string; status: string;
+    tasks: Array<{ id: string; title: string; status: string; result?: string; error?: string }>;
+    result?: string; error?: string; startedAt: string; completedAt?: string;
+  }> = [];
+
+  const liveMissions = new Map<string, typeof missionHistory[0]>();
+
+  app.get("/api/missions", (c) => {
+    const active = Array.from(liveMissions.values());
+    return c.json({ missions: [...active, ...missionHistory.slice(-20)] });
+  });
+
+  app.post("/api/missions/dispatch", async (c) => {
+    const body = await c.req.json<{ goal: string; model?: string; simple?: boolean }>();
+    if (!body.goal) return c.json({ error: "goal is required" }, 400);
+
+    const missionId = crypto.randomUUID();
+    const model = (body.model || "sonnet") as "opus" | "sonnet";
+
+    // Emit dispatched event immediately
+    sessionBus.emit("event", { type: "mission:dispatched", missionId, goal: body.goal, model });
+
+    // Register mission as active session
+    const now = new Date();
+    const sessionId = `mission-${missionId.slice(0, 8)}`;
+    await db.insert(activeSessionsTable)
+      .values({ id: sessionId, project: "mission", description: body.goal.slice(0, 100), startedAt: now, lastPingAt: now })
+      .onConflictDoUpdate({ target: activeSessionsTable.id, set: { description: body.goal.slice(0, 100), lastPingAt: now } });
+    sessionBus.emit("event", { type: "session:registered", session: { id: sessionId, project: "mission", description: body.goal.slice(0, 100) } });
+
+    if (body.simple) {
+      // Simple mode: single Bridge execution (for quick tasks)
+      const bridgePromise = backend.execute(body.goal, {
+        cwd: config.BODHI_PROJECT_DIR || process.cwd(),
+        model,
+        permissionMode: "plan",
+        maxTurns: 15,
+      }, (update) => {
+        if (update.type === "progress") {
+          sessionBus.emit("event", { type: "mission:progress", missionId, chunk: update.content });
+        }
+      });
+
+      bridgePromise.then((task) => {
+        db.delete(activeSessionsTable).where(sql`${activeSessionsTable.id} = ${sessionId}`).catch(() => {});
+        sessionBus.emit("event", { type: "session:deregistered", sessionId });
+        sessionBus.emit("event", {
+          type: task.status === "completed" ? "mission:completed" : "mission:failed",
+          missionId,
+          result: task.result,
+          error: task.error,
+        });
+      }).catch((err) => {
+        db.delete(activeSessionsTable).where(sql`${activeSessionsTable.id} = ${sessionId}`).catch(() => {});
+        sessionBus.emit("event", { type: "session:deregistered", sessionId });
+        sessionBus.emit("event", { type: "mission:failed", missionId, error: err instanceof Error ? err.message : String(err) });
+      });
+    } else {
+      // Full orchestration: decompose → parallel agents → merge
+      orchestrator.runMission(missionId, body.goal, model, (event) => {
+        sessionBus.emit("event", event);
+
+        // Update session description with current phase
+        if (event.type === "mission:phase") {
+          db.update(activeSessionsTable)
+            .set({ description: `${body.goal.slice(0, 60)} [${event.phase}]`, lastPingAt: new Date() })
+            .where(sql`${activeSessionsTable.id} = ${sessionId}`).catch(() => {});
+        }
+      }).then(() => {
+        db.delete(activeSessionsTable).where(sql`${activeSessionsTable.id} = ${sessionId}`).catch(() => {});
+        sessionBus.emit("event", { type: "session:deregistered", sessionId });
+      }).catch(() => {
+        db.delete(activeSessionsTable).where(sql`${activeSessionsTable.id} = ${sessionId}`).catch(() => {});
+        sessionBus.emit("event", { type: "session:deregistered", sessionId });
+      });
+    }
+
+    return c.json({ missionId });
+  });
+
+  app.post("/api/missions/:id/cancel", async (c) => {
+    const id = c.req.param("id");
+    // TODO: orchestrator.cancel(id) when implemented
+    sessionBus.emit("event", { type: "mission:cancelled", missionId: id });
+    return c.json({ cancelled: true });
   });
 
   // API: Memory endpoints
@@ -915,6 +1016,48 @@ async function main() {
   // Event bus for real-time SSE push to dashboard
   const sessionBus = new EventEmitter();
   sessionBus.setMaxListeners(50);
+
+  // Track missions for history (GET /api/missions)
+  sessionBus.on("event", (event: Record<string, unknown>) => {
+    const mid = event.missionId as string | undefined;
+    if (!mid) return;
+    const t = event.type as string;
+    if (t === "mission:dispatched") {
+      liveMissions.set(mid, {
+        id: mid, goal: (event.goal as string) || "", model: (event.model as string) || "sonnet",
+        status: "running", tasks: [], startedAt: new Date().toISOString(),
+      });
+    }
+    if (t === "mission:planned") {
+      const m = liveMissions.get(mid);
+      if (m) {
+        const plan = event.plan as { phases: { tasks: { id: string; title: string }[] }[] };
+        m.tasks = plan.phases.flatMap((p) => p.tasks.map((tk) => ({ id: tk.id, title: tk.title, status: "pending" })));
+      }
+    }
+    if (t === "task:completed" || t === "task:failed") {
+      const m = liveMissions.get(mid);
+      if (m) {
+        const task = m.tasks.find((tk) => tk.id === event.taskId);
+        if (task) {
+          task.status = t === "task:completed" ? "completed" : "failed";
+          task.result = event.result as string | undefined;
+          task.error = event.error as string | undefined;
+        }
+      }
+    }
+    if (t === "mission:completed" || t === "mission:failed") {
+      const m = liveMissions.get(mid);
+      if (m) {
+        m.status = t === "mission:completed" ? "completed" : "failed";
+        m.result = event.result as string | undefined;
+        m.error = event.error as string | undefined;
+        m.completedAt = new Date().toISOString();
+        missionHistory.push({ ...m });
+        liveMissions.delete(mid);
+      }
+    }
+  });
 
   // Auto-expire stale sessions (5 min) and messages (1h)
   let cleanupRunning = false;

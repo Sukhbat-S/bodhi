@@ -22,6 +22,7 @@ const PAGE_COMMENTS: Record<string, string[]> = {
   "/entities": ["The knowledge graph.", "People, projects, connections."],
   "/briefings": ["Past briefings.", "Patterns live here."],
   "/search": ["Search mode.", "What are you looking for?"],
+  "/missions": ["Mission control.", "The agents are watching.", "Command center active."],
   "/timeline": ["Timeline.", "Memory across time."],
   "/status": ["System status.", "Let's see what's humming."],
   "/ecosystem": ["The big picture.", "Everything connected."],

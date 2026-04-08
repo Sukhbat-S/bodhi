@@ -586,7 +586,11 @@ export interface SessionStreamCallbacks {
   onDisconnect: () => void;
 }
 
-export function subscribeSessionStream(callbacks: SessionStreamCallbacks): () => void {
+export interface MissionStreamCallbacks {
+  onMissionUpdate?: (data: { missionId: string; type: string; [key: string]: unknown }) => void;
+}
+
+export function subscribeSessionStream(callbacks: SessionStreamCallbacks & MissionStreamCallbacks): () => void {
   const source = new EventSource(`${BASE}/sessions/stream`);
 
   source.addEventListener("init", (e) => {
@@ -609,11 +613,43 @@ export function subscribeSessionStream(callbacks: SessionStreamCallbacks): () =>
     try { callbacks.onMessageSent(JSON.parse(e.data)); } catch {}
   });
 
+  // Mission + task events
+  for (const evt of [
+    "mission:dispatched", "mission:progress", "mission:completed", "mission:failed", "mission:cancelled",
+    "mission:planning", "mission:planned", "mission:phase", "mission:merged", "mission:merge-failed",
+    "task:running", "task:progress", "task:completed", "task:failed",
+  ]) {
+    source.addEventListener(evt, (e) => {
+      try { callbacks.onMissionUpdate?.(JSON.parse(e.data)); } catch {}
+    });
+  }
+
   source.onerror = () => {
     callbacks.onDisconnect();
   };
 
   return () => { source.close(); };
+}
+
+// --- Missions ---
+
+export function getMissions() {
+  return request<{ missions: Array<{
+    id: string; goal: string; model: string; status: string;
+    tasks: Array<{ id: string; title: string; status: string; result?: string; error?: string }>;
+    result?: string; error?: string; startedAt: string; completedAt?: string;
+  }> }>("/missions");
+}
+
+export function dispatchMission(goal: string, model?: string) {
+  return request<{ missionId: string }>("/missions/dispatch", {
+    method: "POST",
+    body: JSON.stringify({ goal, model }),
+  });
+}
+
+export function cancelMission(id: string) {
+  return request<{ cancelled: boolean }>(`/missions/${id}/cancel`, { method: "POST" });
 }
 
 // --- Chat ---

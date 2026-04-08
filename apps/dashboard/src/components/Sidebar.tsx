@@ -25,6 +25,7 @@ const navGroups: NavGroup[] = [
       { to: "/", label: "Reflection", icon: "reflection", end: true },
       { to: "/chat", label: "Chat", icon: "chat" },
       { to: "/search", label: "Search", icon: "search" },
+      { to: "/missions", label: "Missions", icon: "missions" },
       { to: "/content", label: "Content", icon: "social" },
     ],
   },
@@ -137,6 +138,14 @@ const icons: Record<string, ReactNode> = {
       <circle cx="5" cy="18" r="1.5" strokeWidth={2} />
       <circle cx="19" cy="18" r="1.5" strokeWidth={2} />
       <path strokeLinecap="round" strokeWidth={1.5} d="M6.5 7.5L10 10.5M13.5 10.5L17.5 7.5M6.5 16.5L10 13.5M13.5 13.5L17.5 16.5" />
+    </svg>
+  ),
+  missions: (
+    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" strokeWidth={1.5} />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" strokeWidth={1.5} />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" strokeWidth={1.5} />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" strokeWidth={1.5} />
     </svg>
   ),
   social: (

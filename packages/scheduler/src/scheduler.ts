@@ -90,6 +90,11 @@ export interface SchedulerConfig {
   personaPath?: string;
   metaService?: { getConversations(since: Date): Promise<{ totalMessages: number; summary: string }> } | null;
   contentStore?: ContentStore | null;
+  missionDispatcher?: MissionDispatcher | null;
+}
+
+export interface MissionDispatcher {
+  dispatch(goal: string, model?: string): Promise<{ missionId: string }>;
 }
 
 export interface ContentStore {
@@ -594,6 +599,58 @@ Output the JSON array:`;
       console.log(`[scheduler] Created ${created} calendar time blocks from morning briefing`);
     } catch (err) {
       console.error("[scheduler] Failed to parse time blocks:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  /**
+   * Extract automatable tasks from morning briefing and dispatch them.
+   * Only dispatches tasks marked as "quick" or clearly automatable.
+   */
+  private async dispatchAutonomousTasks(briefingContent: string): Promise<void> {
+    const dispatcher = this.config.missionDispatcher!;
+
+    const prompt = `<system>
+Extract tasks from this morning briefing that BODHI can execute autonomously without human input.
+
+Rules:
+- Only include tasks that are clearly defined and don't need human judgment
+- Skip tasks that say "write", "think about", "decide" — those need the human
+- Include tasks like: "run X command", "check Y status", "generate Z report", "fix known bug"
+- Output ONLY a JSON array of objects with: { "goal": "clear instruction for Claude Code", "model": "sonnet" }
+- Max 3 tasks. Quality over quantity.
+- If no automatable tasks found, output: []
+- Do NOT use any tools
+</system>
+
+Briefing:
+${briefingContent}
+
+JSON array:`;
+
+    const task = await this.config.agent.chat(prompt);
+    const text = task.content || "";
+
+    const match = text.match(/\[[\s\S]*\]/);
+    if (!match) {
+      console.log("[scheduler] No autonomous tasks extracted from briefing");
+      return;
+    }
+
+    try {
+      const tasks = JSON.parse(match[0]) as Array<{ goal: string; model?: string }>;
+      if (!Array.isArray(tasks) || tasks.length === 0) {
+        console.log("[scheduler] No autonomous tasks to dispatch");
+        return;
+      }
+
+      for (const t of tasks.slice(0, 3)) {
+        if (!t.goal) continue;
+        const result = await dispatcher.dispatch(t.goal, t.model || "sonnet");
+        console.log(`[scheduler] Dispatched autonomous task: ${t.goal.slice(0, 60)}... → ${result.missionId}`);
+      }
+      console.log(`[scheduler] Dispatched ${Math.min(tasks.length, 3)} autonomous tasks from morning briefing`);
+    } catch (err) {
+      console.error("[scheduler] Failed to parse autonomous tasks:", err instanceof Error ? err.message : err);
     }
   }
 
@@ -1526,7 +1583,16 @@ Generate the ${type} briefing now.`;
         }
       }
 
-      // 5d. Push to PWA subscribers
+      // 5d. Auto-dispatch autonomous tasks from morning briefing
+      if (type === "morning" && this.config.missionDispatcher) {
+        try {
+          await this.dispatchAutonomousTasks(response.content);
+        } catch (err) {
+          console.error("[scheduler] Autonomous dispatch failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
+      // 5e. Push to PWA subscribers
       if (this.config.pushSender) {
         try {
           const pushResult = await this.config.pushSender.sendToAll({

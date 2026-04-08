@@ -26,6 +26,7 @@ const TimelinePage = lazy(() => import("./pages/TimelinePage"));
 const EntityGraphPage = lazy(() => import("./pages/EntityGraphPage"));
 const WorkflowsPage = lazy(() => import("./pages/WorkflowsPage"));
 const ContentPage = lazy(() => import("./pages/ContentPage"));
+const MissionControlPage = lazy(() => import("./pages/MissionControlPage"));
 
 function PageLoader() {
   return (
@@ -94,6 +95,7 @@ export default function App() {
             <Route path="/timeline" element={<TimelinePage />} />
             <Route path="/entities" element={<EntityGraphPage />} />
             <Route path="/content" element={<ContentPage />} />
+            <Route path="/missions" element={<MissionControlPage />} />
           </Routes>
         </Suspense>
       </main>

@@ -36,4 +36,11 @@ fi
     -H 'Content-Type: application/json' \
     -d '{"id":"mac-main","project":"bodhi","description":"Auto-started"}' > /dev/null 2>&1
   echo "mac-main" > /tmp/bodhi-session-id
+
+  # Keep session alive with periodic pings (every 60s)
+  while true; do
+    sleep 60
+    curl -s -X POST http://localhost:4000/api/sessions/active/mac-main/ping \
+      -H 'Content-Type: application/json' -d '{}' > /dev/null 2>&1 || break
+  done
 ) &

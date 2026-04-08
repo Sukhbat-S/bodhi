@@ -41,7 +41,7 @@ import { VercelService, VercelContextProvider } from "@seneca/vercel";
 import { SupabaseAwarenessService, SupabaseAwarenessProvider } from "@seneca/supabase-awareness";
 import { MetaService } from "@seneca/social";
 import { desc } from "drizzle-orm";
-import { briefings, activeSessions as activeSessionsTable, sessionMessages as sessionMessagesTable } from "@seneca/db";
+import { briefings, activeSessions as activeSessionsTable, sessionMessages as sessionMessagesTable, contentQueue } from "@seneca/db";
 import { loadConfig } from "./config.js";
 import { ConversationService } from "./services/conversation.js";
 import { PushService } from "./services/push.js";
@@ -321,6 +321,25 @@ async function main() {
     },
   };
 
+  const contentStore = {
+    async getNextLesson(): Promise<number> {
+      const rows = await db.select({ lessonNumber: contentQueue.lessonNumber })
+        .from(contentQueue)
+        .orderBy(sql`${contentQueue.lessonNumber} DESC`)
+        .limit(1);
+      return rows.length > 0 ? rows[0].lessonNumber + 1 : 1;
+    },
+    async insert(item: { lessonNumber: number; topic: string; slides: unknown[]; caption: string }): Promise<string> {
+      const rows = await db.insert(contentQueue).values({
+        lessonNumber: item.lessonNumber,
+        topic: item.topic,
+        slides: item.slides as any,
+        caption: item.caption,
+      }).returning({ id: contentQueue.id });
+      return rows[0].id;
+    },
+  };
+
   const scheduler = new Scheduler({
     agent,
     telegram: telegramBot,
@@ -340,6 +359,8 @@ async function main() {
     entityService,
     workflows: workflowRegistry,
     personaPath,
+    metaService,
+    contentStore,
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings + workflows)");
 
@@ -876,7 +897,7 @@ async function main() {
 
   app.post("/api/scheduler/trigger", async (c) => {
     const body = await c.req.json<{ type: string; workflowId?: string }>();
-    const validTypes = ["morning", "evening", "weekly", "synthesis", "inbox-triage", "workflow", "persona-refresh", "daily-intel", "jewelry-changelog"];
+    const validTypes = ["morning", "evening", "weekly", "synthesis", "inbox-triage", "workflow", "persona-refresh", "daily-intel", "jewelry-changelog", "content-generate", "messenger-intel"];
     if (!body.type || !validTypes.includes(body.type)) {
       return c.json({ error: `type must be one of: ${validTypes.join(", ")}` }, 400);
     }
@@ -1678,6 +1699,88 @@ Return ONLY valid JSON:
       console.error("[content] Weekly digest failed:", err instanceof Error ? err.message : err);
       return c.json({ error: "Failed to generate weekly digest" }, 500);
     }
+  });
+
+  // ---- Content Pipeline Endpoints ----
+
+  app.get("/api/content/queue", async (c) => {
+    const status = c.req.query("status");
+    let query = db.select().from(contentQueue).orderBy(sql`${contentQueue.lessonNumber} DESC`);
+    if (status) {
+      query = query.where(sql`${contentQueue.status} = ${status}`) as any;
+    }
+    const items = await query.limit(50);
+    return c.json({ items });
+  });
+
+  app.get("/api/content/queue/:id", async (c) => {
+    const id = c.req.param("id");
+    const rows = await db.select().from(contentQueue).where(sql`${contentQueue.id} = ${id}`);
+    if (rows.length === 0) return c.json({ error: "Not found" }, 404);
+    return c.json(rows[0]);
+  });
+
+  app.post("/api/content/queue/:id/approve", async (c) => {
+    const id = c.req.param("id");
+    await db.update(contentQueue)
+      .set({ status: "approved" as any, updatedAt: new Date() })
+      .where(sql`${contentQueue.id} = ${id}`);
+    return c.json({ approved: true });
+  });
+
+  app.post("/api/content/queue/:id/reject", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => ({})) as { note?: string };
+    await db.update(contentQueue)
+      .set({ status: "rejected" as any, feedbackNote: body.note || null, updatedAt: new Date() })
+      .where(sql`${contentQueue.id} = ${id}`);
+    return c.json({ rejected: true });
+  });
+
+  app.post("/api/content/queue/:id/post", async (c) => {
+    const id = c.req.param("id");
+    const rows = await db.select().from(contentQueue).where(sql`${contentQueue.id} = ${id}`);
+    if (rows.length === 0) return c.json({ error: "Not found" }, 404);
+
+    const item = rows[0];
+    if (item.status !== "approved") {
+      return c.json({ error: "Item must be approved before posting" }, 400);
+    }
+
+    // Extract image URLs from slides
+    const slides = item.slides as Array<{ imageUrl?: string }>;
+    const imageUrls = slides.map((s) => s.imageUrl).filter(Boolean) as string[];
+
+    if (!metaService || imageUrls.length === 0) {
+      return c.json({ error: "Meta not configured or no images" }, 400);
+    }
+
+    const fbResult = await metaService.postCarouselToPage(item.caption, imageUrls);
+
+    await db.update(contentQueue)
+      .set({
+        status: "posted" as any,
+        postedAt: new Date(),
+        postResults: { facebook: fbResult.postId } as any,
+        updatedAt: new Date(),
+      })
+      .where(sql`${contentQueue.id} = ${id}`);
+
+    return c.json({ posted: true, facebook: fbResult });
+  });
+
+  app.post("/api/content/generate", async (c) => {
+    const result = await scheduler.trigger("content-generate");
+    return c.json(result);
+  });
+
+  // Serve generated carousel images
+  app.get("/content/images/:filename", async (c) => {
+    const filename = c.req.param("filename");
+    const filePath = path.resolve(process.cwd(), "data/content", filename);
+    if (!fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
+    const buffer = fs.readFileSync(filePath);
+    return new Response(buffer, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
   });
 
   // ---- Push Notification Endpoints ----

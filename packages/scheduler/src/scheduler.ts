@@ -13,7 +13,7 @@ import type { MemorySynthesizer } from "@seneca/memory";
 import type { InsightGenerator, Insight } from "@seneca/memory";
 
 export type BriefingType = "morning" | "evening" | "weekly";
-export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest" | "workflow" | "persona-refresh" | "daily-intel" | "jewelry-changelog";
+export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest" | "workflow" | "persona-refresh" | "daily-intel" | "jewelry-changelog" | "content-generate" | "messenger-intel";
 
 interface TelegramSender {
   sendProactiveMessage(text: string): Promise<void>;
@@ -88,6 +88,13 @@ export interface SchedulerConfig {
   entityService?: EntityDataSource | null;
   workflows?: Map<string, import("@seneca/core").WorkflowDefinition>;
   personaPath?: string;
+  metaService?: { getConversations(since: Date): Promise<{ totalMessages: number; summary: string }> } | null;
+  contentStore?: ContentStore | null;
+}
+
+export interface ContentStore {
+  getNextLesson(): Promise<number>;
+  insert(item: { lessonNumber: number; topic: string; slides: unknown[]; caption: string }): Promise<string>;
 }
 
 interface JobRecord {
@@ -252,7 +259,7 @@ export class Scheduler {
     this.config = config;
 
     // Initialize job records
-    for (const type of ["morning", "evening", "weekly", "synthesis", "inbox-triage", "build-digest", "daily-intel", "jewelry-changelog"] as SchedulerJobType[]) {
+    for (const type of ["morning", "evening", "weekly", "synthesis", "inbox-triage", "build-digest", "daily-intel", "jewelry-changelog", "content-generate", "messenger-intel"] as SchedulerJobType[]) {
       this.jobs.set(type, {
         type,
         lastRun: null,
@@ -358,6 +365,26 @@ export class Scheduler {
       );
       console.log("[scheduler] Build digest: Mon 10:00 UB");
     }
+
+    // Content generation: Mon/Wed/Fri 06:00 — generate carousel for next lesson
+    if (this.config.contentStore) {
+      this.tasks.push(
+        cron.schedule("0 6 * * 1,3,5", () => this.runContentGenerate(), {
+          timezone: tz,
+        })
+      );
+      console.log("[scheduler] Content generate: Mon/Wed/Fri 06:00 UB");
+    }
+
+    // Messenger intelligence: Sunday 19:00 — analyze customer conversations
+    if (this.config.metaService) {
+      this.tasks.push(
+        cron.schedule("0 19 * * 0", () => this.runMessengerIntel(), {
+          timezone: tz,
+        })
+      );
+      console.log("[scheduler] Messenger intel: Sun 19:00 UB");
+    }
   }
 
   /**
@@ -390,6 +417,12 @@ export class Scheduler {
     }
     if (type === "jewelry-changelog") {
       return this.runJewelryChangelog();
+    }
+    if (type === "content-generate") {
+      return this.runContentGenerate();
+    }
+    if (type === "messenger-intel") {
+      return this.runMessengerIntel();
     }
     if (type === "workflow" && workflowId) {
       return this.runWorkflow(workflowId);
@@ -1091,6 +1124,194 @@ Generate the changelog now.`;
       job.lastResult = "error";
       job.lastDurationMs = Date.now() - startTime;
 
+      return { status: "error", error: errMsg };
+    }
+  }
+
+  /**
+   * Generate carousel content for the next lesson in the curriculum.
+   * Runs Mon/Wed/Fri at 06:00.
+   */
+  private async runContentGenerate(): Promise<{ status: string; content?: string; error?: string }> {
+    const startTime = Date.now();
+    const job = this.jobs.get("content-generate")!;
+
+    if (!this.config.contentStore) {
+      return { status: "skipped", error: "Content store not configured" };
+    }
+
+    try {
+      // 1. Determine next lesson
+      const nextLesson = await this.config.contentStore.getNextLesson();
+      if (nextLesson > 30) {
+        console.log("[scheduler] Content generation: all 30 lessons generated");
+        job.lastRun = new Date();
+        job.lastResult = "skipped";
+        job.lastDurationMs = Date.now() - startTime;
+        return { status: "skipped", content: "All 30 lessons already generated" };
+      }
+
+      // 2. Import curriculum dynamically (avoid circular dependency)
+      const { CURRICULUM, MONGOLIAN_TERMS, KEEP_ENGLISH } = await import("@seneca/social");
+      const topic = CURRICULUM[nextLesson - 1];
+      if (!topic) {
+        return { status: "error", error: `Lesson ${nextLesson} not found in curriculum` };
+      }
+
+      // 3. Generate slide content via Agent
+      const termsGuide = Object.entries(MONGOLIAN_TERMS)
+        .slice(0, 20)
+        .map(([en, mn]) => `${en} → ${mn}`)
+        .join(", ");
+
+      const prompt = `<system>
+You are generating a Facebook carousel about Claude Code for Mongolian developers.
+Topic: "${topic.titleMN}" (${topic.titleEN})
+Lesson #${topic.lessonNumber}, Difficulty: ${topic.difficulty}
+Description: ${topic.description}
+
+Generate exactly ${topic.slideCount} slides as a JSON array. Each slide has: title (Mongolian), body (Mongolian, 2-3 sentences), and optionally code (short code example).
+
+Rules:
+- Write in Mongolian. Technical terms stay in English: ${KEEP_ENGLISH.slice(0, 15).join(", ")}
+- Translation guide: ${termsGuide}
+- Slide 1: hook/intro — grab attention with a question or bold statement
+- Last slide: CTA — "Хадгалаад найздаа илгээгээрэй!" (Save and share!)
+${topic.hasCode ? "- Include at least 2 slides with code examples" : "- No code examples needed for this topic"}
+- Body text: simple, everyday Mongolian. No jargon. Think Facebook audience, not documentation.
+- Each code block: max 4 lines, practical example
+
+Also generate a caption (Mongolian, 2-3 sentences with emoji, ends with CTA).
+
+Output ONLY valid JSON:
+{"slides": [{"title": "...", "body": "...", "code": "..."}], "caption": "..."}
+Do NOT use any tools.
+</system>
+
+Generate lesson #${topic.lessonNumber}: ${topic.titleMN}`;
+
+      console.log(`[scheduler] Generating carousel #${topic.lessonNumber}: ${topic.titleMN}...`);
+      const response = await this.config.agent.chat(prompt);
+      const text = response.content || "";
+
+      // 4. Parse JSON
+      const jsonMatch = text.match(/\{[\s\S]*"slides"[\s\S]*\}/);
+      if (!jsonMatch) {
+        return { status: "error", error: "Agent did not return valid JSON for carousel" };
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]) as { slides: Array<{ title: string; body: string; code?: string }>; caption: string };
+      if (!parsed.slides || parsed.slides.length === 0) {
+        return { status: "error", error: "No slides in generated content" };
+      }
+
+      // 5. Render slides to PNG
+      const { renderSlides } = await import("@seneca/social");
+      const outputDir = `${process.cwd()}/data/content`;
+      const renderResult = await renderSlides(parsed.slides, topic.lessonNumber, outputDir);
+
+      // 6. Store in content queue
+      const slidesWithImages = parsed.slides.map((s, i) => ({
+        ...s,
+        imageUrl: renderResult.files[i] || undefined,
+      }));
+
+      const id = await this.config.contentStore.insert({
+        lessonNumber: topic.lessonNumber,
+        topic: topic.titleMN,
+        slides: slidesWithImages,
+        caption: parsed.caption,
+      });
+
+      // 7. Notify
+      await this.config.telegram?.sendProactiveMessage(
+        `📱 Carousel #${topic.lessonNumber} готов!\n\n"${topic.titleMN}"\n${parsed.slides.length} slides rendered\n\nReview: http://localhost:4000/content`
+      );
+
+      job.lastRun = new Date();
+      job.lastResult = "sent";
+      job.lastDurationMs = Date.now() - startTime;
+
+      console.log(`[scheduler] Carousel #${topic.lessonNumber} generated (${renderResult.slideCount} slides, ${Date.now() - startTime}ms)`);
+      return { status: "sent", content: `Carousel #${topic.lessonNumber}: ${topic.titleMN} — ${parsed.slides.length} slides` };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] Content generation failed: ${errMsg}`);
+      job.lastRun = new Date();
+      job.lastResult = "error";
+      job.lastDurationMs = Date.now() - startTime;
+      return { status: "error", error: errMsg };
+    }
+  }
+
+  /**
+   * Messenger intelligence: analyze customer conversations for insights.
+   * Runs Sunday at 19:00.
+   */
+  private async runMessengerIntel(): Promise<{ status: string; content?: string; error?: string }> {
+    const startTime = Date.now();
+    const job = this.jobs.get("messenger-intel")!;
+
+    if (!this.config.metaService) {
+      return { status: "skipped", error: "Meta service not configured" };
+    }
+
+    try {
+      // 1. Fetch last 7 days of conversations
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const conversations = await this.config.metaService.getConversations(since);
+
+      if (conversations.totalMessages === 0) {
+        console.log("[scheduler] Messenger intel: no messages this week");
+        job.lastRun = new Date();
+        job.lastResult = "skipped";
+        job.lastDurationMs = Date.now() - startTime;
+        return { status: "skipped" };
+      }
+
+      // 2. Analyze via Agent
+      const prompt = `You are analyzing Shigtgee jewelry store's Messenger conversations for the past week.
+
+Data summary:
+${conversations.summary}
+
+Generate a brief client intelligence report:
+1. **Шилдэг 5 асуулт** (Top 5 questions) — what customers ask most
+2. **Бүтээгдэхүүний чиг хандлага** (Product trends) — what products are hot
+3. **Хариу өгөх хугацаа** (Response patterns) — any gaps in response times
+4. **Алдагдсан боломж** (Missed opportunities) — unanswered inquiries, drop-offs
+
+Write in mixed Mongolian/English (headers in Mongolian, details in English is fine).
+Under 200 words.`;
+
+      const response = await this.config.agent.chat(prompt);
+
+      // 3. Store as memory
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        await this.config.memoryService.store({
+          content: `Messenger intelligence (${today}): ${response.content.slice(0, 500)}`,
+          type: "pattern",
+          importance: 0.7,
+          tags: ["messenger-intel", "shigtgee", today],
+        });
+      } catch { /* non-critical */ }
+
+      // 4. Send summary
+      await this.config.telegram?.sendProactiveMessage(`💬 Messenger Intel\n\n${response.content}`);
+
+      job.lastRun = new Date();
+      job.lastResult = "sent";
+      job.lastDurationMs = Date.now() - startTime;
+
+      console.log(`[scheduler] Messenger intel sent (${Date.now() - startTime}ms)`);
+      return { status: "sent", content: response.content };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] Messenger intel failed: ${errMsg}`);
+      job.lastRun = new Date();
+      job.lastResult = "error";
+      job.lastDurationMs = Date.now() - startTime;
       return { status: "error", error: errMsg };
     }
   }

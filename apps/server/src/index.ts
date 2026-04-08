@@ -555,7 +555,7 @@ async function main() {
     if (!body.goal) return c.json({ error: "goal is required" }, 400);
 
     const missionId = crypto.randomUUID();
-    const model = (body.model || "sonnet") as "opus" | "sonnet";
+    const model = (body.model || "opus") as "opus" | "sonnet";
 
     // Emit dispatched event immediately
     sessionBus.emit("event", { type: "mission:dispatched", missionId, goal: body.goal, model });
@@ -573,8 +573,9 @@ async function main() {
       const bridgePromise = backend.execute(body.goal, {
         cwd: config.BODHI_PROJECT_DIR || process.cwd(),
         model,
-        permissionMode: "plan",
-        maxTurns: 15,
+        permissionMode: "bypassPermissions",
+        maxTurns: 25,
+        effort: "max",
       }, (update) => {
         if (update.type === "progress") {
           sessionBus.emit("event", { type: "mission:progress", missionId, chunk: update.content });

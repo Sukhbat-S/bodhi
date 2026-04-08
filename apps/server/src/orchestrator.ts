@@ -273,7 +273,6 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
         model: mission.model,
         permissionMode: "bypassPermissions",
         maxTurns: 25,
-        noSessionPersistence: true,
         effort: "max",
       }, (update) => {
         if (update.type === "progress") {
@@ -442,7 +441,6 @@ Fix the root cause identified above and try again. Do not repeat the same mistak
         model: mission.model,
         permissionMode: "bypassPermissions",
         maxTurns: 25,
-        noSessionPersistence: true,
         effort: "max",
       }, (update) => {
         if (update.type === "progress") {

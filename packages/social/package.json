@@ -10,7 +10,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@seneca/core": "*"
+    "@seneca/core": "*",
+    "puppeteer": "^24.40.0"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

@@ -8,6 +8,7 @@ export default defineConfig({
     "./src/schema/push-subscriptions.ts",
     "./src/schema/briefings.ts",
     "./src/schema/entities.ts",
+    "./src/schema/content-queue.ts",
   ],
   out: "./src/migrations",
   dialect: "postgresql",

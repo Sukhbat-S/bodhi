@@ -384,7 +384,7 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
     return errors;
   }
 
-  /** DNA repair: retry with corrected context */
+  /** DNA repair: diagnose root cause THEN retry with targeted fix */
   private async repairTask(
     mission: Mission,
     task: MissionTask,
@@ -393,15 +393,46 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
   ): Promise<boolean> {
     const errorDesc = task.predictionErrors.map((e) => `${e.field}: expected ${e.expected}, got ${e.actual}`).join("; ");
 
-    const repairPrompt = `Previous attempt at this task produced an incorrect result.
+    // Step 1: DIAGNOSE — ask a separate prompt why it failed (not the same logic that produced the error)
+    const diagnosisPrompt = `A task produced incorrect output. Diagnose the root cause.
+
+Task: ${task.title}
+Prompt given: ${task.prompt.slice(0, 300)}
+Result produced: ${(task.result || "").slice(0, 300)}
+Prediction errors: ${errorDesc}
+
+What SPECIFICALLY went wrong? Was it:
+- Bad prompt (unclear instructions)?
+- Wrong tool usage (used Bash when should have used Grep)?
+- Missing context (needed a file path that wasn't provided)?
+- Hallucination (made up data instead of reading it)?
+- Scope creep (answered a different question)?
+
+Answer in 1-2 sentences. Be specific about the root cause.`;
+
+    let diagnosis = "Unknown root cause";
+    try {
+      const diagTask = await this.backend.execute(diagnosisPrompt, {
+        model: mission.model,
+        tools: "",
+        noSessionPersistence: true,
+        effort: "medium",
+      });
+      diagnosis = diagTask.result || diagnosis;
+    } catch { /* use default diagnosis */ }
+
+    onEvent({ type: "task:diagnosed", missionId: mission.id, taskId: task.id, diagnosis });
+
+    // Step 2: REPAIR — retry with the diagnosis informing the fix
+    const repairPrompt = `Previous attempt at this task failed. A diagnosis found the root cause.
 
 Original task: ${task.prompt}
 
-Previous result: ${(task.result || "").slice(0, 500)}
+Diagnosis of failure: ${diagnosis}
 
 Prediction errors: ${errorDesc}
 
-Please try again, paying careful attention to the prediction errors above. Make sure your output matches the expected format.`;
+Fix the root cause identified above and try again. Do not repeat the same mistake.`;
 
     try {
       const bridgeTask = await this.backend.execute(repairPrompt, {

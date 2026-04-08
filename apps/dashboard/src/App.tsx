@@ -50,18 +50,18 @@ export default function App() {
     <div className="flex h-screen overflow-hidden">
       <CommandPalette />
       {/* Mobile header */}
-      <header className="fixed top-0 left-0 right-0 z-40 flex items-center h-14 px-4 bg-[var(--steppe-night,#0f1b2d)] border-b border-stone-800/60 md:hidden">
+      <header className="fixed top-0 left-0 right-0 z-40 flex items-center h-14 px-4 bg-[var(--steppe-night,#0f1b2d)] border-b border-steppe-shadow/40 md:hidden">
         <button
           onClick={() => setSidebarOpen(true)}
-          className="p-2 -ml-2 text-stone-400 hover:text-stone-200"
+          className="p-2 -ml-2 text-steppe-smoke hover:text-steppe-cream"
           aria-label="Open menu"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h1 className="ml-3 text-lg font-bold text-stone-100 flex items-center gap-2">
-          <svg className="w-5 h-5" viewBox="0 0 100 100" fill="none" stroke="#d97706" strokeWidth="4">
+        <h1 className="ml-3 text-lg font-bold text-steppe-cream flex items-center gap-2">
+          <svg className="w-5 h-5" viewBox="0 0 100 100" fill="none" stroke="var(--steppe-gold)" strokeWidth="4">
             <path d="M50 10 C25 30, 15 50, 50 80 C85 50, 75 30, 50 10Z" strokeLinejoin="round" />
             <path d="M50 25 L50 70" strokeLinecap="round" />
           </svg>

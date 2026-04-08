@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation } from "react-router-dom";
-import { getStatus, getPendingMemoryCount } from "../api";
+import { getStatus, getPendingMemoryCount, subscribeSessionStream } from "../api";
 
 export type PetMood = "neutral" | "happy" | "alert" | "sleepy" | "snarky";
 
@@ -121,6 +121,36 @@ export function usePetBrain() {
       if (idleTimer.current) clearTimeout(idleTimer.current);
     };
   }, [location.pathname, showMessage]);
+
+  // Mission observer — ACC: fires on anomalies, silent on success
+  useEffect(() => {
+    const unsub = subscribeSessionStream({
+      onInit() {},
+      onSessionChange() {},
+      onMessageSent() {},
+      onDisconnect() {},
+      onMissionUpdate(data) {
+        const t = data.type as string;
+        if (t === "task:prediction-error") {
+          showMessage("Prediction missed. Check the output.", "alert");
+        }
+        if (t === "task:repair") {
+          showMessage("Repairing. Watch.", "snarky");
+        }
+        if (t === "task:needs-review") {
+          showMessage("Can't fix this one. Your turn.", "alert");
+        }
+        if (t === "task:duration-warning") {
+          showMessage("Something's slow. Investigate.", "snarky");
+        }
+        if (t === "mission:failed") {
+          showMessage("Mission failed.", "alert");
+        }
+        // Silent on success — biology: no signal when predictions match
+      },
+    });
+    return unsub;
+  }, [showMessage]);
 
   return { message, mood, dismiss };
 }

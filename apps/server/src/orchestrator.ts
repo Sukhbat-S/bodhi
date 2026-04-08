@@ -6,9 +6,24 @@
 import type { AIBackend, BridgeTask } from "@seneca/core";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 
 // --- Types ---
+
+export interface TaskPrediction {
+  outputType: "text" | "code" | "data";
+  expectedLengthRange: [number, number]; // [min, max] chars
+  shouldContainNumbers: boolean;
+  shouldContainCode: boolean;
+  durationMinutes: number;
+}
+
+export interface PredictionError {
+  field: string;
+  expected: string;
+  actual: string;
+  severity: "warning" | "error";
+}
 
 export interface TaskPlan {
   goal: string;
@@ -27,15 +42,19 @@ export interface PlannedTask {
   prompt: string;
   estimatedMinutes: number;
   dependencies: string[];
+  predictions?: TaskPrediction;
 }
 
 export interface MissionTask extends PlannedTask {
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "repaired";
   progress: string[];
   result?: string;
   error?: string;
   worktreePath?: string;
   bridgeTask?: BridgeTask;
+  predictionErrors: PredictionError[];
+  repairAttempts: number;
+  confidence: number;
 }
 
 export interface Mission {
@@ -89,7 +108,14 @@ export class Orchestrator {
       const plan = await this.decompose(goal, model);
       mission.plan = plan;
       mission.tasks = plan.phases.flatMap((p) =>
-        p.tasks.map((t) => ({ ...t, status: "pending" as const, progress: [] }))
+        p.tasks.map((t) => ({
+          ...t,
+          status: "pending" as const,
+          progress: [],
+          predictionErrors: [],
+          repairAttempts: 0,
+          confidence: 1.0,
+        }))
       );
       onEvent({ type: "mission:planned", missionId, plan, taskCount: mission.tasks.length });
 
@@ -133,12 +159,23 @@ export class Orchestrator {
       }
 
       const failed = mission.tasks.filter((t) => t.status === "failed");
+      const avgConfidence = mission.tasks.length > 0
+        ? mission.tasks.reduce((sum, t) => sum + t.confidence, 0) / mission.tasks.length
+        : 0;
       mission.status = failed.length > 0 ? "failed" : "completed";
       mission.completedAt = new Date();
+
+      const resultSummary = mission.tasks.map((t) => {
+        const badge = t.predictionErrors.length > 0 ? " ⚠" : "";
+        return `[${t.status}${badge}] ${t.title}: ${t.result || t.error || ""}`;
+      }).join("\n");
+
       onEvent({
         type: mission.status === "completed" ? "mission:completed" : "mission:failed",
         missionId,
-        result: mission.tasks.map((t) => `[${t.status}] ${t.title}: ${t.result || t.error || ""}`).join("\n"),
+        result: resultSummary,
+        confidence: avgConfidence,
+        predictionErrors: mission.tasks.flatMap((t) => t.predictionErrors.map((e) => ({ taskId: t.id, ...e }))),
         error: failed.length > 0 ? `${failed.length} task(s) failed` : undefined,
       });
     } catch (err) {
@@ -156,6 +193,12 @@ export class Orchestrator {
   }
 
   private async decompose(goal: string, model: "opus" | "sonnet"): Promise<TaskPlan> {
+    // Load self-model to inject weakness awareness
+    const selfModel = this.loadSelfModel();
+    const weaknessHints = selfModel.weaknesses.length > 0
+      ? `\n\nKnown weaknesses (add extra checks for these):\n${selfModel.weaknesses.map((w) => `- ${w.pattern} (error rate: ${(w.errorRate * 100).toFixed(0)}%)`).join("\n")}`
+      : "";
+
     const prompt = `You are a project decomposition specialist. Break this goal into executable tasks.
 
 ## Goal
@@ -167,6 +210,7 @@ ${goal}
 - Keep tasks focused — one clear objective per task
 - Each task prompt should be self-contained (the agent has no context from other tasks)
 - Estimate minutes realistically
+- For EACH task, generate predictions about the expected output${weaknessHints}
 
 ## Output
 Return ONLY a JSON object. No explanation, no markdown, no tools:
@@ -180,9 +224,16 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
         {
           "id": "unique-id",
           "title": "Short title",
-          "prompt": "Full prompt for the Claude Code agent — include file paths, what to do, what to output",
+          "prompt": "Full prompt for the Claude Code agent",
           "estimatedMinutes": number,
-          "dependencies": ["id-of-task-that-must-complete-first"]
+          "dependencies": [],
+          "predictions": {
+            "outputType": "text|code|data",
+            "expectedLengthRange": [minChars, maxChars],
+            "shouldContainNumbers": true/false,
+            "shouldContainCode": true/false,
+            "durationMinutes": number
+          }
         }
       ]
     }
@@ -213,19 +264,8 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
     task.status = "running";
     onEvent({ type: "task:running", missionId: mission.id, taskId: task.id, title: task.title });
 
-    // Create worktree for isolation if multiple tasks in mission
-    const useWorktree = mission.tasks.length > 1;
-    let cwd = this.basePath;
-
-    if (useWorktree) {
-      try {
-        cwd = this.createWorktree(task.id);
-        task.worktreePath = cwd;
-      } catch {
-        // Worktree creation failed, fall back to base path
-        cwd = this.basePath;
-      }
-    }
+    const cwd = this.setupWorktree(mission, task);
+    const startTime = Date.now();
 
     try {
       const bridgeTask = await this.backend.execute(task.prompt, {
@@ -239,25 +279,152 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
         if (update.type === "progress") {
           task.progress.push(update.content);
           onEvent({ type: "task:progress", missionId: mission.id, taskId: task.id, chunk: update.content });
+
+          // Real-time duration check against prediction
+          if (task.predictions?.durationMinutes) {
+            const elapsed = (Date.now() - startTime) / 60_000;
+            if (elapsed > task.predictions.durationMinutes * 5) {
+              onEvent({ type: "task:duration-warning", missionId: mission.id, taskId: task.id, elapsed: Math.round(elapsed) });
+            }
+          }
         }
       });
 
       task.bridgeTask = bridgeTask;
 
       if (bridgeTask.status === "completed") {
-        task.status = "completed";
         task.result = bridgeTask.result;
-        onEvent({ type: "task:completed", missionId: mission.id, taskId: task.id, result: bridgeTask.result });
+
+        // Intrinsic prediction verification
+        task.predictionErrors = this.checkPredictions(task);
+
+        if (task.predictionErrors.length > 0) {
+          onEvent({
+            type: "task:prediction-error",
+            missionId: mission.id,
+            taskId: task.id,
+            errors: task.predictionErrors,
+          });
+
+          // Self-healing: retry if this is the first attempt and errors are fixable
+          const hasErrors = task.predictionErrors.some((e) => e.severity === "error");
+          if (hasErrors && task.repairAttempts === 0) {
+            task.repairAttempts++;
+            onEvent({ type: "task:repair", missionId: mission.id, taskId: task.id });
+            const repaired = await this.repairTask(mission, task, cwd, onEvent);
+            if (repaired) {
+              task.status = "repaired";
+              task.confidence = 0.7; // lower confidence for repaired tasks
+              onEvent({ type: "task:completed", missionId: mission.id, taskId: task.id, result: task.result, repaired: true });
+              this.updateSelfModel(task);
+              return;
+            }
+          }
+
+          // Prediction errors but no repair → completed with lower confidence
+          task.confidence = task.predictionErrors.some((e) => e.severity === "error") ? 0.5 : 0.8;
+        }
+
+        task.status = "completed";
+        onEvent({ type: "task:completed", missionId: mission.id, taskId: task.id, result: task.result, confidence: task.confidence });
       } else {
         task.status = "failed";
         task.error = bridgeTask.error;
+        task.confidence = 0;
         onEvent({ type: "task:failed", missionId: mission.id, taskId: task.id, error: bridgeTask.error });
       }
     } catch (err) {
       task.status = "failed";
       task.error = err instanceof Error ? err.message : String(err);
+      task.confidence = 0;
       onEvent({ type: "task:failed", missionId: mission.id, taskId: task.id, error: task.error });
     }
+
+    this.updateSelfModel(task);
+  }
+
+  private setupWorktree(mission: Mission, task: MissionTask): string {
+    if (mission.tasks.length <= 1) return this.basePath;
+    try {
+      const cwd = this.createWorktree(task.id);
+      task.worktreePath = cwd;
+      return cwd;
+    } catch {
+      return this.basePath;
+    }
+  }
+
+  /** Compare task result against predictions — the cerebellum check */
+  private checkPredictions(task: MissionTask): PredictionError[] {
+    const errors: PredictionError[] = [];
+    const pred = task.predictions;
+    const result = task.result || "";
+    if (!pred) return errors;
+
+    // Length check
+    if (pred.expectedLengthRange) {
+      const [min, max] = pred.expectedLengthRange;
+      if (result.length < min) {
+        errors.push({ field: "length", expected: `${min}-${max} chars`, actual: `${result.length} chars`, severity: result.length < min / 3 ? "error" : "warning" });
+      }
+      if (result.length > max * 3) {
+        errors.push({ field: "length", expected: `${min}-${max} chars`, actual: `${result.length} chars`, severity: "warning" });
+      }
+    }
+
+    // Content type checks
+    if (pred.shouldContainNumbers && !/\d/.test(result)) {
+      errors.push({ field: "numbers", expected: "contains numbers", actual: "no numbers found", severity: "error" });
+    }
+
+    if (pred.shouldContainCode && !/```|function |const |import |class /.test(result)) {
+      errors.push({ field: "code", expected: "contains code", actual: "no code found", severity: "warning" });
+    }
+
+    return errors;
+  }
+
+  /** DNA repair: retry with corrected context */
+  private async repairTask(
+    mission: Mission,
+    task: MissionTask,
+    cwd: string,
+    onEvent: (event: MissionEvent) => void,
+  ): Promise<boolean> {
+    const errorDesc = task.predictionErrors.map((e) => `${e.field}: expected ${e.expected}, got ${e.actual}`).join("; ");
+
+    const repairPrompt = `Previous attempt at this task produced an incorrect result.
+
+Original task: ${task.prompt}
+
+Previous result: ${(task.result || "").slice(0, 500)}
+
+Prediction errors: ${errorDesc}
+
+Please try again, paying careful attention to the prediction errors above. Make sure your output matches the expected format.`;
+
+    try {
+      const bridgeTask = await this.backend.execute(repairPrompt, {
+        cwd,
+        model: mission.model,
+        permissionMode: "bypassPermissions",
+        maxTurns: 15,
+        noSessionPersistence: true,
+        effort: "high",
+      }, (update) => {
+        if (update.type === "progress") {
+          task.progress.push(update.content);
+          onEvent({ type: "task:progress", missionId: mission.id, taskId: task.id, chunk: update.content });
+        }
+      });
+
+      if (bridgeTask.status === "completed") {
+        task.result = bridgeTask.result;
+        task.predictionErrors = this.checkPredictions(task);
+        return task.predictionErrors.filter((e) => e.severity === "error").length === 0;
+      }
+    } catch { /* repair failed */ }
+    return false;
   }
 
   private createWorktree(taskId: string): string {
@@ -322,4 +489,81 @@ Return ONLY a JSON object. No explanation, no markdown, no tools:
   getMission(id: string): Mission | undefined {
     return this.missions.get(id);
   }
+
+  // --- Self-Model (Prefrontal Cortex) ---
+
+  private selfModelPath(): string {
+    return join(this.basePath, "data", "self-model.json");
+  }
+
+  private loadSelfModel(): SelfModel {
+    try {
+      const raw = readFileSync(this.selfModelPath(), "utf-8");
+      return JSON.parse(raw) as SelfModel;
+    } catch {
+      return { weaknesses: [], strengths: [], totalTasks: 0, totalErrors: 0 };
+    }
+  }
+
+  private updateSelfModel(task: MissionTask): void {
+    const model = this.loadSelfModel();
+    model.totalTasks++;
+
+    if (task.predictionErrors.length > 0) {
+      model.totalErrors++;
+      // Extract weakness patterns from prediction errors
+      for (const err of task.predictionErrors) {
+        const pattern = `${err.field} in ${task.title.toLowerCase()}`;
+        const existing = model.weaknesses.find((w) => w.pattern === err.field);
+        if (existing) {
+          existing.errorRate = (existing.errorRate * existing.occurrences + 1) / (existing.occurrences + 1);
+          existing.occurrences++;
+          existing.lastSeen = new Date().toISOString();
+        } else {
+          model.weaknesses.push({
+            pattern: err.field,
+            errorRate: 1,
+            occurrences: 1,
+            lastSeen: new Date().toISOString(),
+          });
+        }
+      }
+    } else if (task.status === "completed") {
+      // Successful — track strength
+      const titleWords = task.title.toLowerCase().split(/\s+/);
+      for (const word of titleWords) {
+        if (word.length < 4) continue; // skip short words
+        const existing = model.strengths.find((s) => s.pattern === word);
+        if (existing) {
+          existing.successRate = (existing.successRate * existing.occurrences + 1) / (existing.occurrences + 1);
+          existing.occurrences++;
+        } else {
+          model.strengths.push({ pattern: word, successRate: 1, occurrences: 1 });
+        }
+      }
+
+      // Decay weaknesses that haven't recurred
+      model.weaknesses = model.weaknesses.filter((w) => {
+        const daysSince = (Date.now() - new Date(w.lastSeen).getTime()) / 86_400_000;
+        return daysSince < 30 || w.occurrences > 3;
+      });
+    }
+
+    // Keep lists manageable
+    model.weaknesses = model.weaknesses.slice(0, 20);
+    model.strengths = model.strengths.slice(0, 20);
+
+    try {
+      const dir = join(this.basePath, "data");
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(this.selfModelPath(), JSON.stringify(model, null, 2));
+    } catch { /* non-critical */ }
+  }
+}
+
+interface SelfModel {
+  weaknesses: Array<{ pattern: string; errorRate: number; occurrences: number; lastSeen: string }>;
+  strengths: Array<{ pattern: string; successRate: number; occurrences: number }>;
+  totalTasks: number;
+  totalErrors: number;
 }

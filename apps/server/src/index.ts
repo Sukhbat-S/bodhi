@@ -1780,7 +1780,7 @@ Return ONLY valid JSON:
     const filePath = path.resolve(process.cwd(), "data/content", filename);
     if (!fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
     const buffer = fs.readFileSync(filePath);
-    return new Response(buffer, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
+    return new Response(buffer, { headers: { "Content-Type": "image/png", "Cache-Control": "no-cache" } });
   });
 
   // ---- Push Notification Endpoints ----

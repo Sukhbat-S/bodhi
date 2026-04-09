@@ -119,6 +119,8 @@ export class HiveWitness {
 
     for (const worker of active) {
       if (worker.elapsed < minRuntime) continue;
+      // Only check agents in isolated worktrees — main cwd has legitimate uncommitted changes
+      if (worker.cwd === process.cwd()) continue;
 
       try {
         const results = await runContainmentChecks(worker.cwd);

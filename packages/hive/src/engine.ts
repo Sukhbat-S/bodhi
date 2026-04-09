@@ -10,7 +10,7 @@ import { AgentPool } from "./pool.js";
 import { DAGScheduler } from "./dag.js";
 import { getRole } from "./roles/index.js";
 import { recordTaskResult, getProfileSummary } from "./agent-memory.js";
-import { runAutoChecks, formatResults } from "./verification.js";
+import { runAutoChecks, runContainmentChecks, formatResults } from "./verification.js";
 
 const DEFAULT_BUDGET: MissionBudget = { maxTasks: 20, maxDurationMs: 30 * 60 * 1000 };
 
@@ -231,17 +231,43 @@ Remember: output ONLY a JSON array of task objects. Each task needs: id, role, m
   }
 
   /**
-   * When a Builder completes, run automated checks (tsc, tests) in parallel.
+   * When a Builder completes, run automated checks (tsc, tests) AND
+   * containment checks in parallel. These are code-level checks that
+   * don't trust the Sentinel — they verify independently.
+   * The Sentinel can be fooled. These can't.
    */
   private async onBuilderCompleted(task: HiveTask): Promise<void> {
     const cwd = task.worktreePath || process.cwd();
-    console.log(`[hive] Running auto-checks for builder ${task.id}...`);
-    const results = await runAutoChecks(cwd);
-    const summary = formatResults(results);
-    const allPassed = results.every((r) => r.passed);
+    console.log(`[hive] Running auto-checks + containment for builder ${task.id}...`);
 
-    if (!allPassed) {
-      console.warn(`[hive] Auto-checks failed for ${task.id}: ${results.filter((r) => !r.passed).map((r) => r.check).join(", ")}`);
+    // Run both in parallel — Sentinel is AI (can be fooled), these are deterministic
+    const [codeResults, containmentResults] = await Promise.all([
+      runAutoChecks(cwd),
+      runContainmentChecks(cwd),
+    ]);
+
+    const allCode = codeResults.every((r) => r.passed);
+    const allContainment = containmentResults.every((r) => r.passed);
+
+    if (!allContainment) {
+      // Containment failure = hard reject. No repair, no second chance.
+      const failed = containmentResults.filter((r) => !r.passed).map((r) => `${r.check}: ${r.output.slice(0, 100)}`);
+      console.error(`[hive] CONTAINMENT VIOLATION for ${task.id}: ${failed.join("; ")}`);
+      this.emit({
+        type: "task:failed",
+        missionId: task.missionId,
+        taskId: task.id,
+        data: { containmentViolation: true, checks: failed },
+      });
+      // Force task to failed — override any Sentinel approval
+      task.status = "failed";
+      task.error = `Containment violation: ${failed.join("; ")}`;
+      return;
+    }
+
+    if (!allCode) {
+      const summary = formatResults(codeResults);
+      console.warn(`[hive] Auto-checks failed for ${task.id}: ${codeResults.filter((r) => !r.passed).map((r) => r.check).join(", ")}`);
       this.emit({
         type: "task:repair",
         missionId: task.missionId,

@@ -14,7 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import cron from "node-cron";
 import { Orchestrator } from "./orchestrator.js";
-import { HiveEngine, AgentPool } from "@seneca/hive";
+import { HiveEngine, AgentPool, HiveWitness, getProfiles } from "@seneca/hive";
 import { DesignAuditor } from "./design-auditor.js";
 import { fileURLToPath } from "node:url";
 
@@ -568,7 +568,16 @@ async function main() {
       });
     },
   });
-  console.log(`  Hive: initialized (pool=${hivePoolSize})`);
+  const witness = new HiveWitness({
+    pool: hivePool,
+    getMissions: () => hive.listMissions(50),
+    cancelMission: (id) => hive.cancel(id),
+    onAlert: (alert) => {
+      console.warn(`[witness] ${alert.level}: ${alert.message}`);
+      sessionBus.emit("event", { type: "witness:alert", alertType: alert.type, level: alert.level, message: alert.message, timestamp: new Date().toISOString() });
+    },
+  });
+  console.log(`  Hive: initialized (pool=${hivePoolSize}, witness active)`);
 
   // Hive API endpoints
   app.get("/api/hive/status", (c) => {
@@ -578,16 +587,27 @@ async function main() {
   });
 
   app.post("/api/hive/dispatch", async (c) => {
-    const { goal, model } = await c.req.json<{ goal: string; model?: "opus" | "sonnet" }>();
+    const { goal, model, budget } = await c.req.json<{ goal: string; model?: "opus" | "sonnet"; budget?: { maxTasks?: number; maxDurationMs?: number } }>();
     if (!goal) return c.json({ error: "goal required" }, 400);
-    // Fire and forget — mission runs in background
-    const missionPromise = hive.dispatch(goal, model || "opus");
-    // Return immediately with mission ID
+    const missionPromise = hive.dispatch(goal, model || "opus", budget);
     const mission = { id: "", status: "planning" };
     missionPromise.then((m) => { mission.id = m.id; });
-    // Wait briefly for ID to be set
     await new Promise((r) => setTimeout(r, 100));
     return c.json({ missionId: mission.id || "dispatching", status: "planning" });
+  });
+
+  app.get("/api/hive/missions/:id", (c) => {
+    const mission = hive.getMission(c.req.param("id"));
+    if (!mission) return c.json({ error: "Mission not found" }, 404);
+    return c.json(mission);
+  });
+
+  app.get("/api/hive/profiles", (c) => {
+    return c.json({ profiles: getProfiles() });
+  });
+
+  app.get("/api/hive/alerts", (c) => {
+    return c.json({ alerts: witness.getAlerts() });
   });
 
   app.get("/api/hive/metrics", (c) => {
@@ -2303,6 +2323,9 @@ Return ONLY valid JSON:
   // Start Scheduler (cron jobs — doesn't depend on Telegram being ready)
   scheduler.start();
 
+  // Start Witness (Hive health monitor)
+  witness.start();
+
   // Start Telegram bot (non-blocking — launch() never resolves during long-polling)
   if (telegramBot) {
     telegramBot.start().catch((error) => {
@@ -2418,6 +2441,7 @@ Return ONLY valid JSON:
   const shutdown = async () => {
     console.log("\n🌳  BODHI shutting down...");
     scheduler.stop();
+    witness.stop();
     try {
       await telegramBot?.stop();
     } catch {

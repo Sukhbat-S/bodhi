@@ -5,10 +5,14 @@
 // ============================================================
 
 import { randomUUID } from "node:crypto";
-import type { Mission, HiveTask, HiveMetrics, AgentRole, ModelTier } from "./types.js";
+import type { Mission, MissionBudget, HiveTask, HiveMetrics, AgentRole, ModelTier } from "./types.js";
 import { AgentPool } from "./pool.js";
 import { DAGScheduler } from "./dag.js";
 import { getRole } from "./roles/index.js";
+import { recordTaskResult, getProfileSummary } from "./agent-memory.js";
+import { runAutoChecks, formatResults } from "./verification.js";
+
+const DEFAULT_BUDGET: MissionBudget = { maxTasks: 20, maxDurationMs: 30 * 60 * 1000 };
 
 interface HiveEngineConfig {
   pool: AgentPool;
@@ -42,7 +46,7 @@ export class HiveEngine {
     this.memoryService = config.memoryService;
     this.onEvent = config.onEvent;
 
-    // Wire task events
+    // Wire task events + verification + profiling
     this.scheduler.onTask((task, event) => {
       this.emit({
         type: `task:${event}` as HiveEvent["type"],
@@ -50,18 +54,38 @@ export class HiveEngine {
         taskId: task.id,
         data: { role: task.role, model: task.model },
       });
+
+      // Record result for agent profiling
+      if (event === "completed" || event === "failed") {
+        recordTaskResult(task, this.memoryService).catch(() => {});
+      }
+
+      // Auto-verification: when a Builder completes, run tsc + inject Sentinel
+      if (event === "completed" && task.role === "builder") {
+        this.onBuilderCompleted(task).catch((err) => {
+          console.error(`[hive] Verification failed for ${task.id}:`, err);
+        });
+      }
+
+      // Auto-repair: when Sentinel says NEEDS_REPAIR, re-run Builder
+      if (event === "completed" && task.role === "sentinel" && task.result?.includes("NEEDS_REPAIR")) {
+        this.onRepairNeeded(task).catch((err) => {
+          console.error(`[hive] Repair dispatch failed for ${task.id}:`, err);
+        });
+      }
     });
   }
 
   /**
    * Dispatch a mission: decompose the goal into tasks, then execute the DAG.
    */
-  async dispatch(goal: string, model: ModelTier = "opus"): Promise<Mission> {
+  async dispatch(goal: string, model: ModelTier = "opus", budget?: Partial<MissionBudget>): Promise<Mission> {
     const mission: Mission = {
       id: randomUUID(),
       goal,
       status: "planning",
       tasks: [],
+      budget: { ...DEFAULT_BUDGET, ...budget },
       createdAt: new Date(),
     };
     this.missions.set(mission.id, mission);
@@ -168,10 +192,15 @@ export class HiveEngine {
       }
     }
 
+    const profileContext = getProfileSummary();
+
     const prompt = `Decompose this goal into a task DAG for parallel agent execution:
 
 GOAL: ${mission.goal}
+
+BUDGET: Maximum ${mission.budget.maxTasks} tasks. Keep it focused.
 ${memoryContext}
+${profileContext !== "No agent profiles yet." ? `\nAgent performance:\n${profileContext}` : ""}
 
 Remember: output ONLY a JSON array of task objects. Each task needs: id, role, model, prompt, dependsOn, priority.`;
 
@@ -191,7 +220,83 @@ Remember: output ONLY a JSON array of task objects. Each task needs: id, role, m
 
     // Parse the DAG from Commander's output
     const tasks = this.parseTaskDAG(result, mission.id);
+
+    // Enforce task budget
+    if (tasks.length > mission.budget.maxTasks) {
+      console.warn(`[hive] Commander produced ${tasks.length} tasks, budget is ${mission.budget.maxTasks} — truncating`);
+      return tasks.slice(0, mission.budget.maxTasks);
+    }
+
     return tasks;
+  }
+
+  /**
+   * When a Builder completes, run automated checks (tsc, tests) in parallel.
+   */
+  private async onBuilderCompleted(task: HiveTask): Promise<void> {
+    const cwd = task.worktreePath || process.cwd();
+    console.log(`[hive] Running auto-checks for builder ${task.id}...`);
+    const results = await runAutoChecks(cwd);
+    const summary = formatResults(results);
+    const allPassed = results.every((r) => r.passed);
+
+    if (!allPassed) {
+      console.warn(`[hive] Auto-checks failed for ${task.id}: ${results.filter((r) => !r.passed).map((r) => r.check).join(", ")}`);
+      this.emit({
+        type: "task:repair",
+        missionId: task.missionId,
+        taskId: task.id,
+        data: { autoChecks: summary, passed: false },
+      });
+    }
+  }
+
+  /**
+   * When a Sentinel flags NEEDS_REPAIR, dispatch a repair Builder task.
+   */
+  private async onRepairNeeded(sentinelTask: HiveTask): Promise<void> {
+    // Find the original builder task this sentinel reviewed
+    const mission = this.missions.get(sentinelTask.missionId);
+    if (!mission) return;
+
+    // Find the builder that produced the work being reviewed
+    const builderDep = sentinelTask.dependsOn[0];
+    const originalBuilder = mission.tasks.find((t) => t.id === builderDep);
+    if (!originalBuilder) return;
+
+    if (originalBuilder.repairAttempts >= 3) {
+      console.warn(`[hive] Builder ${originalBuilder.id} hit max repairs (3) — giving up`);
+      this.emit({
+        type: "task:failed",
+        missionId: mission.id,
+        taskId: originalBuilder.id,
+        data: { reason: "max-repairs-exceeded" },
+      });
+      return;
+    }
+
+    originalBuilder.repairAttempts++;
+    console.log(`[hive] Dispatching repair for ${originalBuilder.id} (attempt ${originalBuilder.repairAttempts})`);
+
+    // Create a repair task
+    const repairTask: HiveTask = {
+      id: `${originalBuilder.id}-repair-${originalBuilder.repairAttempts}`,
+      missionId: mission.id,
+      role: "builder",
+      model: originalBuilder.model,
+      prompt: `REPAIR TASK: The previous attempt had issues.\n\nOriginal task: ${originalBuilder.prompt}\n\nSentinel feedback: ${sentinelTask.result}\n\nFix the issues identified by the Sentinel. Do not start from scratch — fix the specific problems.`,
+      systemPrompt: originalBuilder.systemPrompt,
+      allowedTools: originalBuilder.allowedTools,
+      dependsOn: [],
+      priority: "high",
+      status: "pending",
+      repairAttempts: originalBuilder.repairAttempts,
+      worktreePath: originalBuilder.worktreePath,
+    };
+
+    mission.tasks.push(repairTask);
+    this.pool.submit(repairTask).catch(() => {});
+    this.emit({ type: "task:repair", missionId: mission.id, taskId: repairTask.id });
   }
 
   private parseTaskDAG(commanderOutput: string, missionId: string): HiveTask[] {

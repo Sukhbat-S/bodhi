@@ -50,6 +50,7 @@ import {
 } from "../api";
 import CommandBar from "../components/CommandBar";
 import MissionCard, { type Mission, type MissionTask } from "../components/MissionCard";
+import HiveView from "../components/HiveView";
 import SessionCard from "../components/SessionCard";
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -558,6 +559,9 @@ export default function ReflectionPage() {
                   </div>
                 )}
               </div>
+
+              {/* === HIVE STATUS === */}
+              <HiveView />
 
               {/* === MISSIONS (merged from MissionControlPage) === */}
               <CommandBar onDispatch={handleDispatch} disabled={dispatching} />

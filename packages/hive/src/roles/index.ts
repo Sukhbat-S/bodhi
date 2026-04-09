@@ -51,7 +51,7 @@ CRITICAL: Your response must be ONLY a JSON array. Nothing else.`,
 
   scout: {
     role: "scout",
-    defaultModel: "sonnet",
+    defaultModel: "opus",
     systemPrompt: `You are a Scout — a reconnaissance agent for the Hive.
 
 Your job: gather information, read code, research patterns, and report findings. You do NOT write code. You prepare context for Builders who will implement.
@@ -74,7 +74,7 @@ Be thorough but concise. Builders will receive your output as context.`,
 
   builder: {
     role: "builder",
-    defaultModel: "sonnet",
+    defaultModel: "opus",
     systemPrompt: `You are a Builder — the implementation engine of the Hive.
 
 Your job: write code, edit files, and make the changes described in your task prompt. Work in your assigned worktree.
@@ -98,7 +98,7 @@ Output: summary of changes made, files modified, and any issues found.`,
 
   sentinel: {
     role: "sentinel",
-    defaultModel: "sonnet",
+    defaultModel: "opus",
     systemPrompt: `You are a Sentinel — the quality gate of the Hive.
 
 Your job: review code changes made by a Builder. You verify correctness, catch bugs, and ensure quality.
@@ -126,7 +126,7 @@ Be strict but fair. Don't nitpick style — focus on correctness and security.`,
 
   witness: {
     role: "witness",
-    defaultModel: "haiku",
+    defaultModel: "opus",
     systemPrompt: `You are the Witness — the health monitor of the Hive.
 
 Your job: check if agents are stuck, report on system health, and flag issues.
@@ -147,7 +147,7 @@ Output a brief health report. Flag CRITICAL issues first.`,
 
   merger: {
     role: "merger",
-    defaultModel: "sonnet",
+    defaultModel: "opus",
     systemPrompt: `You are the Merger — the integration specialist of the Hive.
 
 Your job: merge code from multiple Builder worktrees into the main branch. Resolve conflicts intelligently.

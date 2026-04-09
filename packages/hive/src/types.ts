@@ -32,11 +32,19 @@ export interface HiveTask {
   assignedAgent?: string;
 }
 
+export interface MissionBudget {
+  /** Max tasks the Commander can decompose into (default 20) */
+  maxTasks: number;
+  /** Max total mission duration in ms (default 30min) */
+  maxDurationMs: number;
+}
+
 export interface Mission {
   id: string;
   goal: string;
   status: MissionStatus;
   tasks: HiveTask[];
+  budget: MissionBudget;
   createdAt: Date;
   completedAt?: Date;
   result?: string;

@@ -151,6 +151,16 @@ export class AgentPool {
         ? `<system>${task.systemPrompt}</system>\n\n${task.prompt}`
         : task.prompt;
 
+      // Role-aware turn budget (fixes error_max_turns: tool_use on web research)
+      // Scouts do multi-step WebSearch/WebFetch — need more turns
+      // Builders do focused code edits — 8 is enough
+      // Commander just decomposes — 5 is plenty
+      const turnBudget = task.role === "scout" ? 20
+        : task.role === "builder" ? 12
+        : task.role === "sentinel" ? 10
+        : task.role === "commander" ? 6
+        : 8;
+
       // Auto-retry on transient failures (rate limits, network blips)
       let result: { content: string } | null = null;
       let lastError: Error | null = null;
@@ -160,6 +170,7 @@ export class AgentPool {
             model: task.model,
             allowedTools: task.allowedTools,
             cwd: task.worktreePath,
+            maxTurns: turnBudget,
           });
           break;
         } catch (err) {

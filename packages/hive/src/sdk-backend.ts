@@ -114,6 +114,7 @@ export function createSDKBackend(): { execute: (prompt: string, options?: Record
         cwd: options?.cwd as string,
         allowedTools: options?.allowedTools as string[],
         systemPrompt: options?.systemPrompt as string,
+        maxTurns: options?.maxTurns as number,
       });
       return { content: result.content };
     },

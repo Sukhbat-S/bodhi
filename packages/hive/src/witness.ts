@@ -13,9 +13,11 @@ export interface WitnessConfig {
   getMissions: () => Mission[];
   /** Cancel a mission by ID */
   cancelMission: (id: string) => boolean;
+  /** Re-submit a stuck task for retry */
+  retryTask?: (taskId: string, missionId: string) => void;
   /** Check interval in ms (default 30s) */
   intervalMs?: number;
-  /** Max heap MB before pausing queue (default 80% of system) */
+  /** Max heap MB before pausing queue (default 512) */
   heapWarningMb?: number;
   /** Callback for alerts */
   onAlert?: (alert: WitnessAlert) => void;
@@ -77,22 +79,38 @@ export class HiveWitness {
         // Kill stuck task
         this.config.pool.cancel(worker.taskId);
         console.log(`[witness] Killed stuck agent: ${worker.taskId} (${worker.role}, ${Math.round(worker.elapsed / 60000)}min)`);
+
+        // Retry the task if handler is wired
+        if (this.config.retryTask) {
+          this.config.retryTask(worker.taskId, worker.role);
+          console.log(`[witness] Retried stuck task: ${worker.taskId}`);
+        }
       }
     }
   }
+
+  private queuePaused = false;
 
   private checkMemoryPressure(): void {
     const heapMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
     const threshold = this.config.heapWarningMb ?? 512;
 
-    if (heapMb > threshold) {
+    if (heapMb > threshold && !this.queuePaused) {
+      this.queuePaused = true;
+      // Scale pool to 1 to stop accepting new work
+      this.config.pool.scale(1);
       this.alert({
         level: "critical",
         type: "memory-pressure",
-        message: `Heap ${heapMb}MB exceeds ${threshold}MB threshold`,
+        message: `Heap ${heapMb}MB exceeds ${threshold}MB — pool scaled to 1, draining`,
         timestamp: new Date(),
       });
-      console.warn(`[witness] Memory pressure: ${heapMb}MB heap`);
+      console.warn(`[witness] Memory pressure: ${heapMb}MB — pool throttled to 1`);
+    } else if (heapMb < threshold * 0.7 && this.queuePaused) {
+      // Recovered — restore pool
+      this.queuePaused = false;
+      this.config.pool.scale(10);
+      console.log(`[witness] Memory recovered: ${heapMb}MB — pool restored to 10`);
     }
   }
 

@@ -16,11 +16,6 @@ const envSchema = z.object({
   // Hive (agent swarm)
   HIVE_POOL_SIZE: z.string().optional(), // default 10, max 50
 
-  // Discord (optional — read-only intelligence from Discord servers)
-  DISCORD_BOT_TOKEN: z.string().optional(),
-  DISCORD_GUILD_IDS: z.string().optional(), // comma-separated guild IDs to monitor
-  DISCORD_CHANNEL_IDS: z.string().optional(), // comma-separated channel IDs (empty = all)
-
   // Database
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 

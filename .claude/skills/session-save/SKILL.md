@@ -1,7 +1,7 @@
 ---
 name: session-save
 description: Commit work + extract session knowledge into BODHI's long-term memory. The only end-of-session command you need.
-disable-model-invocation: true
+disable-model-invocation: false
 allowed-tools: Bash(git *), mcp__bodhi__search_memories, mcp__bodhi__store_memory, mcp__bodhi__store_session_summary, mcp__bodhi__deregister_active_session
 ---
 

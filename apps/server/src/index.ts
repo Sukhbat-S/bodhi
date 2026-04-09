@@ -583,7 +583,10 @@ async function main() {
   // Hive API endpoints
   app.get("/api/hive/status", (c) => {
     const metrics = hive.getMetrics();
-    const missions = hive.listMissions(5);
+    const limitParam = c.req.query('limit');
+    const parsed = limitParam ? parseInt(limitParam, 10) : 50;
+    const limit = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 500) : 50;
+    const missions = hive.listMissions(limit);
     return c.json({ metrics, recentMissions: missions.map((m) => ({ id: m.id, goal: m.goal.slice(0, 100), status: m.status, taskCount: m.tasks.length })) });
   });
 

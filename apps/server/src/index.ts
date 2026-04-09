@@ -14,7 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import cron from "node-cron";
 import { Orchestrator } from "./orchestrator.js";
-import { HiveEngine, AgentPool, HiveWitness, getProfiles } from "@seneca/hive";
+import { HiveEngine, AgentPool, HiveWitness, getProfiles, createSDKBackend } from "@seneca/hive";
 import { DesignAuditor } from "./design-auditor.js";
 import { fileURLToPath } from "node:url";
 
@@ -544,16 +544,30 @@ async function main() {
 
   // The Hive — memory-powered agent swarm
   const hivePoolSize = Number(config.HIVE_POOL_SIZE) || 10;
+  // SDK backend: in-process (~20MB/agent), Bridge fallback: CLI subprocess (~120MB/agent)
+  let sdkBackend: ReturnType<typeof createSDKBackend> | null = null;
+  try {
+    sdkBackend = createSDKBackend();
+    console.log("  Hive SDK: available (in-process, 4-6x lighter)");
+  } catch {
+    console.log("  Hive SDK: unavailable, using Bridge only");
+  }
+
+  const bridgeBackend = { execute: async (prompt: string, options?: Record<string, unknown>) => {
+    const task = await backend.execute(prompt, options as any);
+    return { content: task.result || "" };
+  }};
+
   const hivePool = new AgentPool(
     {
       maxConcurrent: hivePoolSize,
-      preferredBackend: "bridge",
-      modelTiering: { opus: "bridge", sonnet: "bridge", haiku: "bridge", mythos: "api" },
+      preferredBackend: sdkBackend ? "sdk" : "bridge",
+      modelTiering: { opus: sdkBackend ? "sdk" : "bridge", sonnet: sdkBackend ? "sdk" : "bridge", haiku: sdkBackend ? "sdk" : "bridge", mythos: "api" },
     },
-    { bridge: { execute: async (prompt, options) => {
-      const task = await backend.execute(prompt, options as any);
-      return { content: task.result || "" };
-    }} },
+    {
+      ...(sdkBackend ? { sdk: sdkBackend } : {}),
+      bridge: bridgeBackend,
+    },
   );
   const hive = new HiveEngine({
     pool: hivePool,

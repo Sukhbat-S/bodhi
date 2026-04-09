@@ -128,6 +128,51 @@ function createProfile(role: AgentRole, specialization?: string): AgentProfile {
   };
 }
 
+/**
+ * Store a lesson learned from a successful repair (Ross Mike pattern).
+ * These lessons get preloaded into future Commander prompts.
+ */
+export async function storeLesson(
+  originalError: string,
+  repairResult: string,
+  role: string,
+  memoryService?: MemoryService,
+): Promise<void> {
+  if (!memoryService) return;
+
+  const lesson = `Hive lesson [${role}]: Task failed with "${originalError.slice(0, 100)}". Fix: ${repairResult.slice(0, 200)}`;
+
+  try {
+    await memoryService.store({
+      content: lesson,
+      type: "pattern",
+      tags: ["hive", "skill-evolution", role, "auto-learning"],
+      importance: 0.8,
+    });
+    console.log(`[hive] Stored skill evolution lesson for ${role}`);
+  } catch {
+    // Non-critical
+  }
+}
+
+/**
+ * Get recent lessons for a role (for Commander context).
+ */
+export async function getLessons(
+  role: string,
+  memoryService?: MemoryService,
+  limit = 5,
+): Promise<string[]> {
+  if (!memoryService) return [];
+
+  try {
+    const memories = await memoryService.search(`hive skill-evolution ${role}`, limit);
+    return memories.map((m) => m.content);
+  } catch {
+    return [];
+  }
+}
+
 function extractPattern(error: string): string | null {
   if (error.includes("tsc") || error.includes("type error")) return "type-errors";
   if (error.includes("timeout")) return "timeout";

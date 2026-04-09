@@ -6,6 +6,7 @@
 
 import type { AgentPool } from "./pool.js";
 import type { Mission } from "./types.js";
+import { runContainmentChecks } from "./verification.js";
 
 export interface WitnessConfig {
   pool: AgentPool;
@@ -63,6 +64,7 @@ export class HiveWitness {
   private async patrol(): Promise<void> {
     try {
       this.checkStuckAgents();
+      await this.checkActiveAgentBehavior();
       this.checkMemoryPressure();
       this.checkQueueHealth();
       this.enforceBudgets();
@@ -103,6 +105,38 @@ export class HiveWitness {
           console.log(`[witness] Killed stuck agent: ${worker.taskId} — no more retries`);
           this.retryCount.delete(worker.taskId);
         }
+      }
+    }
+  }
+
+  /**
+   * Spot-check active agents for containment violations.
+   * Only checks agents running > 2min (give them time to start).
+   */
+  private async checkActiveAgentBehavior(): Promise<void> {
+    const active = this.config.pool.getActive();
+    const minRuntime = 2 * 60 * 1000; // 2 minutes
+
+    for (const worker of active) {
+      if (worker.elapsed < minRuntime) continue;
+
+      try {
+        const results = await runContainmentChecks(worker.cwd);
+        const violations = results.filter((r) => !r.passed);
+
+        if (violations.length > 0) {
+          const details = violations.map((v) => `${v.check}: ${v.output.slice(0, 80)}`).join("; ");
+          this.alert({
+            level: "critical",
+            type: "stuck-agent",
+            message: `Containment violation mid-task: ${worker.taskId} (${worker.role}) — ${details}`,
+            timestamp: new Date(),
+          });
+          this.config.pool.cancel(worker.taskId);
+          console.error(`[witness] Killed agent ${worker.taskId} for mid-task containment violation: ${details}`);
+        }
+      } catch {
+        // Containment check failed to run — not a violation, just skip
       }
     }
   }

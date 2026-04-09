@@ -9,7 +9,7 @@ import type { Mission, MissionBudget, HiveTask, HiveMetrics, AgentRole, ModelTie
 import { AgentPool } from "./pool.js";
 import { DAGScheduler } from "./dag.js";
 import { getRole } from "./roles/index.js";
-import { recordTaskResult, getProfileSummary } from "./agent-memory.js";
+import { recordTaskResult, getProfileSummary, storeLesson, getLessons } from "./agent-memory.js";
 import { runAutoChecks, runContainmentChecks, formatResults } from "./verification.js";
 
 const DEFAULT_BUDGET: MissionBudget = { maxTasks: 20, maxDurationMs: 30 * 60 * 1000 };
@@ -58,6 +58,16 @@ export class HiveEngine {
       // Record result for agent profiling
       if (event === "completed" || event === "failed") {
         recordTaskResult(task, this.memoryService).catch(() => {});
+      }
+
+      // Recursive skill evolution: when a repair succeeds, store the lesson
+      if (event === "completed" && task.id.includes("-repair-") && task.result) {
+        const mission = this.missions.get(task.missionId);
+        const originalId = task.id.split("-repair-")[0];
+        const original = mission?.tasks.find((t) => t.id === originalId);
+        if (original?.error) {
+          storeLesson(original.error, task.result, task.role, this.memoryService).catch(() => {});
+        }
       }
 
       // Auto-verification: when a Builder completes, run tsc + inject Sentinel
@@ -194,13 +204,24 @@ export class HiveEngine {
 
     const profileContext = getProfileSummary();
 
+    // Load learned lessons from past repairs (Ross Mike recursive skill pattern)
+    let lessonsContext = "";
+    if (this.memoryService) {
+      try {
+        const lessons = await getLessons("builder", this.memoryService, 5);
+        if (lessons.length > 0) {
+          lessonsContext = `\n\nLearned from past failures (apply these):\n${lessons.map((l) => `- ${l}`).join("\n")}`;
+        }
+      } catch { /* non-critical */ }
+    }
+
     const prompt = `Decompose this goal into a task DAG for parallel agent execution:
 
 GOAL: ${mission.goal}
 
 BUDGET: Maximum ${mission.budget.maxTasks} tasks. Keep it focused.
 ${memoryContext}
-${profileContext !== "No agent profiles yet." ? `\nAgent performance:\n${profileContext}` : ""}
+${profileContext !== "No agent profiles yet." ? `\nAgent performance:\n${profileContext}` : ""}${lessonsContext}
 
 Remember: output ONLY a JSON array of task objects. Each task needs: id, role, model, prompt, dependsOn, priority.`;
 

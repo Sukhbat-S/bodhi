@@ -112,11 +112,12 @@ export class AgentPool {
   /**
    * Get list of active workers for monitoring.
    */
-  getActive(): { taskId: string; role: string; elapsed: number }[] {
+  getActive(): { taskId: string; role: string; elapsed: number; cwd: string }[] {
     return Array.from(this.active.entries()).map(([id, w]) => ({
       taskId: id,
       role: w.task.role,
       elapsed: Date.now() - w.startedAt,
+      cwd: w.task.worktreePath || process.cwd(),
     }));
   }
 

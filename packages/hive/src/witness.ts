@@ -57,11 +57,25 @@ export class HiveWitness {
     return this.alerts.slice(-limit);
   }
 
+  private consecutiveFailures = 0;
+  private retryCount = new Map<string, number>();
+
   private async patrol(): Promise<void> {
-    this.checkStuckAgents();
-    this.checkMemoryPressure();
-    this.checkQueueHealth();
-    this.enforceBudgets();
+    try {
+      this.checkStuckAgents();
+      this.checkMemoryPressure();
+      this.checkQueueHealth();
+      this.enforceBudgets();
+      this.consecutiveFailures = 0;
+    } catch (err) {
+      this.consecutiveFailures++;
+      console.error(`[witness] Patrol failed (${this.consecutiveFailures}x):`, err instanceof Error ? err.message : err);
+      if (this.consecutiveFailures >= 5) {
+        console.error("[witness] 5 consecutive patrol failures — stopping witness to prevent loop");
+        this.stop();
+        this.alert({ level: "critical", type: "stuck-agent", message: "Witness self-terminated after 5 consecutive patrol failures", timestamp: new Date() });
+      }
+    }
   }
 
   private checkStuckAgents(): void {
@@ -78,12 +92,16 @@ export class HiveWitness {
         });
         // Kill stuck task
         this.config.pool.cancel(worker.taskId);
-        console.log(`[witness] Killed stuck agent: ${worker.taskId} (${worker.role}, ${Math.round(worker.elapsed / 60000)}min)`);
 
-        // Retry the task if handler is wired
-        if (this.config.retryTask) {
+        // Retry — but cap at 2 retries per task to prevent infinite kill-retry loop
+        const retries = this.retryCount.get(worker.taskId) ?? 0;
+        if (retries < 2 && this.config.retryTask) {
+          this.retryCount.set(worker.taskId, retries + 1);
           this.config.retryTask(worker.taskId, worker.role);
-          console.log(`[witness] Retried stuck task: ${worker.taskId}`);
+          console.log(`[witness] Killed + retried stuck agent: ${worker.taskId} (attempt ${retries + 1}/2)`);
+        } else {
+          console.log(`[witness] Killed stuck agent: ${worker.taskId} — no more retries`);
+          this.retryCount.delete(worker.taskId);
         }
       }
     }

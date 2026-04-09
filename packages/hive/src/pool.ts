@@ -151,11 +151,29 @@ export class AgentPool {
         ? `<system>${task.systemPrompt}</system>\n\n${task.prompt}`
         : task.prompt;
 
-      const result = await backend.execute(prompt, {
-        model: task.model,
-        allowedTools: task.allowedTools,
-        cwd: task.worktreePath,
-      });
+      // Auto-retry on transient failures (rate limits, network blips)
+      let result: { content: string } | null = null;
+      let lastError: Error | null = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          result = await backend.execute(prompt, {
+            model: task.model,
+            allowedTools: task.allowedTools,
+            cwd: task.worktreePath,
+          });
+          break;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          if (attempt === 0) {
+            // Wait 2s before retry (give rate limiter a moment)
+            console.warn(`[pool] Task ${task.id} failed (${lastError.message.slice(0, 100)}), retrying in 2s...`);
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+      }
+      if (!result) {
+        throw lastError || new Error("Backend execute failed after retry");
+      }
 
       task.status = "completed";
       task.result = result.content;

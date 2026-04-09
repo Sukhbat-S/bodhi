@@ -38,8 +38,11 @@ export async function executeViaSDK(
   const sdkOptions: Record<string, unknown> = {
     model: options.model || "opus",
     cwd: options.cwd || process.cwd(),
-    maxTurns: options.maxTurns || 25,
-    allowedTools: options.allowedTools || ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+    // Tighter default — most tasks finish in 5-8 turns. 25 was wasteful default.
+    maxTurns: options.maxTurns || 8,
+    // No default tools — pass exactly what the role needs, nothing extra.
+    // Smaller tool surface = faster agent decisions = lower latency.
+    allowedTools: options.allowedTools || [],
     permissionMode: "acceptEdits" as const,
   };
 
@@ -52,20 +55,49 @@ export async function executeViaSDK(
   let finalResult = "";
   let durationMs = 0;
   let costUsd = 0;
+  let turnCount = 0;
+  const startTime = Date.now();
 
-  for await (const message of stream) {
-    if (message.type === "result") {
-      const result = message as { subtype: string; result: string; duration_ms: number; total_cost_usd: number };
-      if (result.subtype === "success") {
-        finalResult = result.result;
-        durationMs = result.duration_ms;
-        costUsd = result.total_cost_usd;
-      } else {
-        throw new Error(`SDK query failed: ${result.result}`);
+  try {
+    for await (const message of stream) {
+      // Count turns for visibility
+      if (message.type === "assistant") {
+        turnCount++;
+      }
+
+      if (message.type === "result") {
+        const result = message as Record<string, unknown>;
+        if (result.subtype === "success") {
+          finalResult = String(result.result || "");
+          durationMs = Number(result.duration_ms || 0);
+          costUsd = Number(result.total_cost_usd || 0);
+        } else {
+          // Capture EVERY field — error message could be in result, error, message, or stop_reason
+          const errorMsg = String(
+            result.result ||
+            result.error ||
+            result.message ||
+            result.stop_reason ||
+            JSON.stringify(result).slice(0, 500) ||
+            "unknown SDK error"
+          );
+          throw new Error(`SDK query failed (subtype=${result.subtype}): ${errorMsg}`);
+        }
       }
     }
-    // Stream events (assistant messages, tool use) — skip for now
-    // Could wire to onProgress callback later
+  } catch (err: unknown) {
+    // Surface the actual error, not "undefined"
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg === "undefined" || !msg) {
+      throw new Error(`SDK stream error (no message): ${JSON.stringify(err).slice(0, 300)}`);
+    }
+    throw err;
+  }
+
+  // Log latency to find slow tasks
+  const wallMs = Date.now() - startTime;
+  if (wallMs > 60_000) {
+    console.warn(`[hive-sdk] Slow task: ${(wallMs / 1000).toFixed(1)}s, ${turnCount} turns`);
   }
 
   return { content: finalResult, durationMs, costUsd };

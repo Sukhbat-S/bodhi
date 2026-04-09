@@ -33,29 +33,37 @@ export async function renderSlides(
 
   const browser = await puppeteer.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    protocolTimeout: 180_000, // 3min — handles memory pressure during overnight jobs
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      "--js-flags=--max-old-space-size=128",
+    ],
   });
 
   const files: string[] = [];
 
   try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1080, height: 1080 });
-
     for (let i = 0; i < slides.length; i++) {
       const slide = slides[i];
       const isFirst = i === 0;
       const isLast = i === slides.length - 1;
       const html = buildSlideHTML(slide, lessonNumber, i + 1, slides.length, isFirst, isLast);
 
-      await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 10000 });
-      // Brief pause for font loading
+      // Fresh page per slide — releases memory between screenshots
+      const page = await browser.newPage();
+      page.setDefaultTimeout(120_000);
+      await page.setViewport({ width: 1080, height: 1080 });
+      await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 30_000 });
       await new Promise((r) => setTimeout(r, 500));
 
       const fileName = `carousel-${lessonNumber}-${i + 1}.png`;
       const filePath = join(outputDir, fileName);
       await page.screenshot({ path: filePath, type: "png" });
       files.push(filePath);
+      await page.close(); // free memory before next slide
     }
   } finally {
     await browser.close();

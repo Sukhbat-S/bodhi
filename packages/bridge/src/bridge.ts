@@ -28,6 +28,29 @@ export type BridgeProgressCallback = (update: {
 
 export class Bridge {
   private activeTasks: Map<string, ChildProcess> = new Map();
+  private cleanEnv: NodeJS.ProcessEnv;
+
+  constructor() {
+    // Strip env vars that interfere with Claude CLI auth — ONCE, not per call.
+    // ANTHROPIC_API_KEY: forces API key auth, bypassing Max subscription.
+    // CLAUDE_*: parent session vars that cause nested-session exit code 1.
+    this.cleanEnv = { ...process.env };
+    const stripped: string[] = [];
+    for (const key of Object.keys(this.cleanEnv)) {
+      if (
+        key === "CLAUDECODE" ||
+        key === "ANTHROPIC_API_KEY" ||
+        key.startsWith("CLAUDE_") ||
+        (key === "__CFBundleIdentifier" && this.cleanEnv[key]?.includes("claude"))
+      ) {
+        stripped.push(key);
+        delete this.cleanEnv[key];
+      }
+    }
+    if (stripped.length > 0) {
+      console.log(`[bridge] Env cleaned once: stripped ${stripped.length} vars (${stripped.join(", ")})`);
+    }
+  }
 
   /**
    * Execute a Claude Code task via CLI subprocess.
@@ -164,30 +187,8 @@ export class Bridge {
         args.push("--effort", opts.effort);
       }
 
-      // Strip env vars that interfere with Claude CLI auth.
-      // ANTHROPIC_API_KEY: forces API key auth (may have no credits),
-      //   bypassing the stored OAuth/Max subscription auth.
-      // CLAUDE_*: parent Claude Code session vars that make the child
-      //   think it's nested inside another session (exit code 1).
-      const cleanEnv = { ...process.env };
-      const strippedVars: string[] = [];
-      for (const key of Object.keys(cleanEnv)) {
-        if (
-          key === "CLAUDECODE" ||
-          key === "ANTHROPIC_API_KEY" ||
-          key.startsWith("CLAUDE_") ||
-          (key === "__CFBundleIdentifier" &&
-            cleanEnv[key]?.includes("claude"))
-        ) {
-          strippedVars.push(key);
-          delete cleanEnv[key];
-        }
-      }
-      if (strippedVars.length > 0) {
-        console.log(
-          `[bridge] Stripped ${strippedVars.length} env vars: ${strippedVars.join(", ")}`
-        );
-      }
+      // Use pre-cleaned env (stripped once at class init, not per call)
+      const cleanEnv = this.cleanEnv;
 
       console.log(`[bridge] Running: claude ${args.map(a => a.includes(" ") ? `"${a}"` : a).join(" ")} (prompt via stdin, ${prompt.length} chars)`);
 

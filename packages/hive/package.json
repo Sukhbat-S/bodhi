@@ -1,0 +1,21 @@
+{
+  "name": "@seneca/hive",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.97",
+    "@seneca/bridge": "*",
+    "@seneca/core": "*",
+    "@seneca/memory": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

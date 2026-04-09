@@ -54,6 +54,34 @@ export class GmailService {
     return emails.filter((e): e is EmailSummary => e !== null);
   }
 
+  /**
+   * Fetch recent emails from tracked newsletter sources (last 24h).
+   * Used by the morning briefing to surface AI/dev news intelligence.
+   * Handles Gmail API rate limits with retry + exponential backoff.
+   */
+  async getNewsletterDigest(senderEmails: string[], limit = 10): Promise<EmailSummary[]> {
+    if (senderEmails.length === 0) return [];
+    const fromClause = senderEmails.map((e) => `from:${e}`).join(" OR ");
+    const query = `(${fromClause}) newer_than:1d`;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.search(query, limit);
+      } catch (err: unknown) {
+        const status = (err as { code?: number }).code;
+        if (status === 429 || status === 503) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.warn(`[gmail] Rate limited on newsletter digest, retrying in ${delay}ms...`);
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        throw err;
+      }
+    }
+    console.error("[gmail] Newsletter digest failed after 3 retries");
+    return [];
+  }
+
   async getTodayEmails(): Promise<EmailSummary[]> {
     const today = new Date();
     const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, "0")}/${String(today.getDate()).padStart(2, "0")}`;

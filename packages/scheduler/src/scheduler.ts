@@ -407,7 +407,7 @@ export class Scheduler {
   /**
    * Manually trigger a briefing or synthesis (for testing via API).
    */
-  async trigger(type: SchedulerJobType, workflowId?: string): Promise<{ status: string; content?: string; error?: string }> {
+  async trigger(type: SchedulerJobType, workflowId?: string, lessonNumber?: number): Promise<{ status: string; content?: string; error?: string }> {
     if (type === "synthesis") {
       return this.runSynthesis();
     }
@@ -424,7 +424,7 @@ export class Scheduler {
       return this.runJewelryChangelog();
     }
     if (type === "content-generate") {
-      return this.runContentGenerate();
+      return this.runContentGenerate(lessonNumber);
     }
     if (type === "messenger-intel") {
       return this.runMessengerIntel();
@@ -1189,7 +1189,7 @@ Generate the changelog now.`;
    * Generate carousel content for the next lesson in the curriculum.
    * Runs Mon/Wed/Fri at 06:00.
    */
-  private async runContentGenerate(): Promise<{ status: string; content?: string; error?: string }> {
+  private async runContentGenerate(targetLesson?: number): Promise<{ status: string; content?: string; error?: string }> {
     const startTime = Date.now();
     const job = this.jobs.get("content-generate")!;
 
@@ -1198,8 +1198,8 @@ Generate the changelog now.`;
     }
 
     try {
-      // 1. Determine next lesson
-      const nextLesson = await this.config.contentStore.getNextLesson();
+      // 1. Determine next lesson (use targetLesson override if provided)
+      const nextLesson = targetLesson ?? await this.config.contentStore.getNextLesson();
       if (nextLesson > 30) {
         console.log("[scheduler] Content generation: all 30 lessons generated");
         job.lastRun = new Date();

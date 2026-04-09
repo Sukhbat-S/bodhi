@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import cron from "node-cron";
 import { Orchestrator } from "./orchestrator.js";
+import { HiveEngine, AgentPool } from "@seneca/hive";
 import { DesignAuditor } from "./design-auditor.js";
 import { fileURLToPath } from "node:url";
 
@@ -540,6 +541,65 @@ async function main() {
 
   // API: Missions — dispatch goals to Orchestrator with streaming progress via SSE
   const orchestrator = new Orchestrator(backend, config.BODHI_PROJECT_DIR || process.cwd());
+
+  // The Hive — memory-powered agent swarm
+  const hivePoolSize = Number(config.HIVE_POOL_SIZE) || 10;
+  const hivePool = new AgentPool(
+    {
+      maxConcurrent: hivePoolSize,
+      preferredBackend: "bridge",
+      modelTiering: { opus: "bridge", sonnet: "bridge", haiku: "bridge" },
+    },
+    { bridge: { execute: async (prompt, options) => {
+      const task = await backend.execute(prompt, options as any);
+      return { content: task.result || "" };
+    }} },
+  );
+  const hive = new HiveEngine({
+    pool: hivePool,
+    memoryService: memoryService as any,
+    onEvent: (event) => {
+      sessionBus.emit("event", {
+        type: event.type,
+        missionId: event.missionId,
+        taskId: event.taskId,
+        ...(event.data || {}),
+        timestamp: new Date().toISOString(),
+      });
+    },
+  });
+  console.log(`  Hive: initialized (pool=${hivePoolSize})`);
+
+  // Hive API endpoints
+  app.get("/api/hive/status", (c) => {
+    const metrics = hive.getMetrics();
+    const missions = hive.listMissions(5);
+    return c.json({ metrics, recentMissions: missions.map((m) => ({ id: m.id, goal: m.goal.slice(0, 100), status: m.status, taskCount: m.tasks.length })) });
+  });
+
+  app.post("/api/hive/dispatch", async (c) => {
+    const { goal, model } = await c.req.json<{ goal: string; model?: "opus" | "sonnet" }>();
+    if (!goal) return c.json({ error: "goal required" }, 400);
+    // Fire and forget — mission runs in background
+    const missionPromise = hive.dispatch(goal, model || "opus");
+    // Return immediately with mission ID
+    const mission = { id: "", status: "planning" };
+    missionPromise.then((m) => { mission.id = m.id; });
+    // Wait briefly for ID to be set
+    await new Promise((r) => setTimeout(r, 100));
+    return c.json({ missionId: mission.id || "dispatching", status: "planning" });
+  });
+
+  app.get("/api/hive/metrics", (c) => {
+    return c.json(hive.getMetrics());
+  });
+
+  app.post("/api/hive/scale", async (c) => {
+    const { size } = await c.req.json<{ size: number }>();
+    if (!size || size < 1 || size > 50) return c.json({ error: "size must be 1-50" }, 400);
+    hive.scale(size);
+    return c.json({ poolSize: size });
+  });
   app.get("/api/missions", async (c) => {
     const rows = await db.select().from(missionsTable).orderBy(sql`${missionsTable.startedAt} DESC`).limit(20);
     const allTasks = rows.length > 0
@@ -1940,7 +2000,8 @@ Return ONLY valid JSON:
   });
 
   app.post("/api/content/generate", async (c) => {
-    const result = await scheduler.trigger("content-generate");
+    const body = await c.req.json().catch(() => ({})) as { lessonNumber?: number };
+    const result = await scheduler.trigger("content-generate", undefined, body.lessonNumber);
     return c.json(result);
   });
 

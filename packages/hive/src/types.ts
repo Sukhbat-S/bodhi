@@ -8,7 +8,7 @@ export type Priority = "critical" | "high" | "normal" | "background";
 export type TaskStatus = "pending" | "queued" | "running" | "completed" | "failed" | "cancelled";
 export type MissionStatus = "planning" | "executing" | "completed" | "failed" | "cancelled";
 export type BackendType = "sdk" | "bridge" | "api";
-export type ModelTier = "opus" | "sonnet" | "haiku";
+export type ModelTier = "opus" | "sonnet" | "haiku" | "mythos";
 
 export interface HiveTask {
   id: string;

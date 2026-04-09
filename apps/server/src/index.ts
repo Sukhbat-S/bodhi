@@ -548,7 +548,7 @@ async function main() {
     {
       maxConcurrent: hivePoolSize,
       preferredBackend: "bridge",
-      modelTiering: { opus: "bridge", sonnet: "bridge", haiku: "bridge" },
+      modelTiering: { opus: "bridge", sonnet: "bridge", haiku: "bridge", mythos: "api" },
     },
     { bridge: { execute: async (prompt, options) => {
       const task = await backend.execute(prompt, options as any);
@@ -2416,7 +2416,25 @@ Return ONLY valid JSON:
     try {
       console.log("[overnight] [5/5] Security scan...");
       const result = await backend.execute(
-        "Run a security check on the BODHI monorepo:\n1. Search for hardcoded secrets: grep -r 'password\\|secret\\|api_key\\|token' in .ts/.tsx/.json files (not node_modules, not .env)\n2. Verify .env is NOT tracked: git ls-files .env\n3. Run npm audit and count high/critical vulnerabilities\n4. Check if any new files contain sensitive patterns\n5. Verify .gitignore covers: .env, .google-token.json, *.key, *.pem\n\nReport: SAFE or ALERT for each check. If any ALERT, list the specific file and line.",
+        `Run a comprehensive security audit on the BODHI monorepo. Check BOTH traditional and Mythos-class vulnerability patterns:
+
+TRADITIONAL CHECKS:
+1. Hardcoded secrets: grep for password, secret, api_key, token in .ts/.tsx/.json (not node_modules, not .env)
+2. Verify .env is NOT tracked: git ls-files .env
+3. npm audit — count high/critical vulnerabilities
+4. .gitignore covers: .env, .google-token.json, *.key, *.pem
+
+MYTHOS-CLASS VULNERABILITY PATTERNS (check TypeScript source for):
+5. Buffer/array bounds: any fixed-size buffers without length validation? Array access without bounds check?
+6. Integer overflow: size calculations, length math, or counter arithmetic that could overflow?
+7. Auth bypass: login/auth logic with fallthrough paths that skip validation? Default-allow patterns?
+8. Command injection: template strings or string concatenation passed to exec/spawn/eval?
+9. Path traversal: user input used in file paths without sanitization? (we fixed one before — check for new ones)
+10. TOCTOU race: time-of-check vs time-of-use gaps in file operations or permission checks?
+11. Unsafe deserialization: JSON.parse on user input without schema validation?
+12. Scope escalation: any API endpoint that accepts an ID parameter without verifying ownership?
+
+Report: SAFE or ALERT for each check. If ALERT, give the exact file:line and the vulnerable pattern.`,
         { cwd: config.BODHI_PROJECT_DIR || process.cwd(), model: "sonnet", permissionMode: "plan", maxTurns: 8, effort: "medium", noSessionPersistence: true }
       );
       console.log(`[overnight] [5/5] Security: ${result.status}`);

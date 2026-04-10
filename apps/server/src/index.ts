@@ -968,6 +968,14 @@ async function main() {
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
     }
   });
+  app.get("/api/trading/pre-trade", async (c) => {
+    const catalyst = c.req.query("catalyst") || undefined;
+    const side = c.req.query("side") as "long" | "short" | undefined;
+    const symbol = c.req.query("symbol") || undefined;
+    const result = await tradingService.preTradeQuery({ catalyst, side, symbol });
+    return c.json(result);
+  });
+
   app.get("/api/missions", async (c) => {
     const rows = await db.select().from(missionsTable).orderBy(sql`${missionsTable.startedAt} DESC`).limit(20);
     const allTasks = rows.length > 0

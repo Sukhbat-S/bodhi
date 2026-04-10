@@ -79,7 +79,7 @@ function EntitySphere({
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const color = TYPE_COLORS[node.type] || '#f59e0b';
-  const size = Math.max(0.15, Math.min(0.6, 0.15 + node.mentionCount * 0.03));
+  const size = Math.max(0.5, Math.min(2.0, 0.5 + node.mentionCount * 0.08));
   const emissiveIntensity = isHovered ? 3 : isConnected ? 2 : isDimmed ? 0.1 : 0.8;
   const scale = isHovered ? 1.5 : isConnected ? 1.2 : isDimmed ? 0.7 : 1;
 
@@ -111,14 +111,15 @@ function EntitySphere({
         />
       </mesh>
 
-      {/* Outer glow sphere */}
-      <mesh scale={2.5}>
+      {/* Outer glow sphere — child of group, not sibling of animated mesh */}
+      <mesh scale={isHovered ? 2.0 : 1.5}>
         <sphereGeometry args={[size, 8, 8]} />
         <meshBasicMaterial
           color={color}
           transparent
-          opacity={isDimmed ? 0.01 : isHovered ? 0.15 : isConnected ? 0.08 : 0.03}
+          opacity={isDimmed ? 0.01 : isHovered ? 0.15 : isConnected ? 0.08 : 0.04}
           toneMapped={false}
+          depthWrite={false}
         />
       </mesh>
 

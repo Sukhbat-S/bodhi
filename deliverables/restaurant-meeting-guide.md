@@ -15,7 +15,7 @@ You're NOT selling. You're a relative who builds AI systems and wants to underst
 
 Ask these questions. Let him talk. Take notes on your phone.
 
-### About the restaurant
+### About the restaurantd
 - What kind of food? How many seats? How long open?
 - How many staff? What's the busiest day/time?
 - What's the average ticket (per person spending)?
@@ -29,7 +29,7 @@ Ask these questions. Let him talk. Take notes on your phone.
 - Have you ever run paid ads? (Facebook ads, Google ads, delivery app promotions?)
 
 ### About operations (hidden opportunities)
-- How do customers reserve a table? (phone call, walk-in, Facebook message, app?)
+- How do customers reserve a table? (phone call, walk-in, Facebook message, app?)j
 - What's your no-show rate? Do people book and not come?
 - Do you use any software? (POS system, accounting, inventory, scheduling?)
 - What's the biggest daily headache? (staffing, food waste, slow nights, complaints?)
@@ -45,8 +45,8 @@ Ask these questions. Let him talk. Take notes on your phone.
 
 While eating / talking, notice:
 
-- [ ] Is there a QR menu or paper menu?
-- [ ] How's the Wi-Fi? (customers care)
+- [ ] Is there a QR menu or paper menu? no qr menu 
+- [ ] How's the Wi-Fi? (customers care) no wifi info
 - [ ] What does the entrance look like from outside? (curb appeal)
 - [ ] Google Maps: search the restaurant name — what comes up? Photos? Reviews? Hours correct?
 - [ ] Facebook: search the restaurant — page exists? Recent posts? Review count?

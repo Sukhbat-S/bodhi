@@ -27,6 +27,7 @@ const TimelinePage = lazy(() => import("./pages/TimelinePage"));
 const EntityGraphPage = lazy(() => import("./pages/EntityGraphPage"));
 const WorkflowsPage = lazy(() => import("./pages/WorkflowsPage"));
 const ContentPage = lazy(() => import("./pages/ContentPage"));
+const TradingPage = lazy(() => import("./pages/TradingPage"));
 // MissionControlPage merged into ReflectionPage (home)
 
 function PageLoader() {
@@ -105,6 +106,7 @@ export default function App() {
             <Route path="/timeline" element={<TimelinePage />} />
             <Route path="/entities" element={<EntityGraphPage />} />
             <Route path="/content" element={<ContentPage />} />
+            <Route path="/trading" element={<TradingPage />} />
             {/* Missions merged into home page */}
           </Routes>
           </motion.div>

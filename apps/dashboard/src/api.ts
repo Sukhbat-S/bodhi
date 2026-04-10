@@ -825,3 +825,55 @@ export function postContent(id: string) {
 export function generateContent() {
   return request<{ status: string; content?: string; error?: string }>("/content/generate", { method: "POST" });
 }
+
+// --- Trading ---
+
+export interface Trade {
+  id: string;
+  symbol: string;
+  side: "long" | "short";
+  status: "open" | "closed" | "cancelled";
+  entryPrice: number;
+  exitPrice?: number;
+  stopLoss: number;
+  takeProfit?: number;
+  size: number;
+  thesis: string;
+  catalyst?: string;
+  confidence: number;
+  pnlUsd?: number;
+  rMultiple?: number;
+  postmortem?: string;
+  isPaper: boolean;
+  openedAt: string;
+  closedAt?: string;
+}
+
+export interface TradingStats {
+  totalTrades: number;
+  openTrades: number;
+  closedTrades: number;
+  winners: number;
+  losers: number;
+  breakeven: number;
+  winRate: number;
+  totalPnlUsd: number;
+  avgRMultiple: number;
+  biggestWin: number;
+  biggestLoss: number;
+}
+
+export interface TradingStatusResponse {
+  mode: "testnet" | "live" | "journal-only";
+  balance: { totalUsd: number; total: Record<string, number>; free: Record<string, number> } | null;
+  stats: TradingStats;
+  openPositions: Trade[];
+}
+
+export function getTradingStatus() {
+  return request<TradingStatusResponse>("/trading/status");
+}
+
+export function getTradingTrades(limit = 20) {
+  return request<{ trades: Trade[] }>(`/trading/trades?limit=${limit}`);
+}

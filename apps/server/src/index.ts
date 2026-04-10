@@ -96,6 +96,29 @@ async function main() {
     }
   }, 3 * 24 * 60 * 60 * 1000);
 
+  // 4c. Clean up orphaned missions from a previous restart.
+  // Any mission stuck in planning/executing belongs to a dead process —
+  // mark it cancelled so the dashboard doesn't show zombies.
+  try {
+    const orphanedTasks = await db
+      .update(missionTasksTable)
+      .set({ status: "failed", error: "Server restart — task state lost", completedAt: new Date() })
+      .where(sql`${missionTasksTable.status} IN ('pending', 'running')`)
+      .returning({ id: missionTasksTable.id });
+    const orphanedMissions = await db
+      .update(missionsTable)
+      .set({ status: "cancelled", error: "Server restart — mission interrupted", completedAt: new Date() })
+      .where(sql`${missionsTable.status} IN ('planning', 'executing')`)
+      .returning({ id: missionsTable.id });
+    if (orphanedMissions.length > 0 || orphanedTasks.length > 0) {
+      console.log(
+        `  Mission cleanup: ${orphanedMissions.length} mission(s), ${orphanedTasks.length} task(s) marked as interrupted from previous run`,
+      );
+    }
+  } catch (err) {
+    console.error("[mission-cleanup] startup cleanup failed:", err);
+  }
+
   // 4b. Initialize Conversation Service
   const conversationService = new ConversationService(db);
   console.log("  Conversations: initialized");
@@ -556,16 +579,105 @@ async function main() {
     },
     { sdk: sdkBackend },
   );
+  // Prefix Hive task IDs with mission ID in the DB layer to avoid PK collisions
+  // between missions (Commander often reuses short IDs like "scout-1").
+  const hiveTaskDbId = (missionId: string, taskId: string) => `${missionId}:${taskId}`;
+
   const hive = new HiveEngine({
     pool: hivePool,
     memoryService: memoryService as any,
     onEvent: (event) => {
+      const mid = event.missionId;
+      const ts = new Date().toISOString();
+
+      // Translate Hive-native events to orchestrator-compatible event names
+      // so the existing persistence listener + dashboard subscribers both work.
+      if (event.type === "mission:created") {
+        const mission = hive.getMission(mid);
+        sessionBus.emit("event", {
+          type: "mission:dispatched",
+          missionId: mid,
+          goal: mission?.goal || (event.data?.goal as string) || "",
+          model: mission?.model || (event.data?.model as string) || "opus",
+          source: "hive",
+          timestamp: ts,
+        });
+        return;
+      }
+
+      if (event.type === "mission:planned") {
+        const rawTasks = (event.data?.tasks as Array<{ id: string; role: string; prompt: string }>) || [];
+        // Shape matches Orchestrator plan for DB persistence (single synthetic phase).
+        const plan = {
+          phases: [
+            {
+              name: "Hive DAG",
+              tasks: rawTasks.map((t) => ({
+                id: hiveTaskDbId(mid, t.id),
+                title: `[${t.role}] ${t.prompt.slice(0, 80)}`,
+                prompt: t.prompt,
+              })),
+            },
+          ],
+        };
+        sessionBus.emit("event", {
+          type: "mission:planned",
+          missionId: mid,
+          plan,
+          taskCount: rawTasks.length,
+          source: "hive",
+          timestamp: ts,
+        });
+        return;
+      }
+
+      if (event.type === "task:started") {
+        sessionBus.emit("event", {
+          type: "task:running",
+          missionId: mid,
+          taskId: event.taskId ? hiveTaskDbId(mid, event.taskId) : undefined,
+          source: "hive",
+          timestamp: ts,
+        });
+        return;
+      }
+
+      if (event.type === "task:completed" || event.type === "task:failed") {
+        const mission = hive.getMission(mid);
+        const task = mission?.tasks.find((t) => t.id === event.taskId);
+        sessionBus.emit("event", {
+          type: event.type,
+          missionId: mid,
+          taskId: event.taskId ? hiveTaskDbId(mid, event.taskId) : undefined,
+          result: task?.result,
+          error: task?.error,
+          source: "hive",
+          timestamp: ts,
+        });
+        return;
+      }
+
+      if (event.type === "mission:completed" || event.type === "mission:failed") {
+        const mission = hive.getMission(mid);
+        sessionBus.emit("event", {
+          type: event.type,
+          missionId: mid,
+          result: mission?.result,
+          error: mission?.error,
+          source: "hive",
+          timestamp: ts,
+        });
+        return;
+      }
+
+      // Pass-through for other events (task:repair, etc)
       sessionBus.emit("event", {
         type: event.type,
-        missionId: event.missionId,
-        taskId: event.taskId,
+        missionId: mid,
+        taskId: event.taskId ? hiveTaskDbId(mid, event.taskId) : undefined,
         ...(event.data || {}),
-        timestamp: new Date().toISOString(),
+        source: "hive",
+        timestamp: ts,
       });
     },
   });
@@ -581,13 +693,60 @@ async function main() {
   console.log(`  Hive: initialized (pool=${hivePoolSize}, witness active)`);
 
   // Hive API endpoints
-  app.get("/api/hive/status", (c) => {
+  app.get("/api/hive/status", async (c) => {
     const metrics = hive.getMetrics();
     const limitParam = c.req.query('limit');
     const parsed = limitParam ? parseInt(limitParam, 10) : 50;
     const limit = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 500) : 50;
-    const missions = hive.listMissions(limit);
-    return c.json({ metrics, recentMissions: missions.map((m) => ({ id: m.id, goal: m.goal.slice(0, 100), status: m.status, taskCount: m.tasks.length })) });
+
+    // Read persisted missions from DB so history survives server restarts.
+    // In-memory map is only a live cache; DB is the source of truth.
+    try {
+      const rows = await db
+        .select({
+          id: missionsTable.id,
+          goal: missionsTable.goal,
+          status: missionsTable.status,
+          startedAt: missionsTable.startedAt,
+        })
+        .from(missionsTable)
+        .orderBy(sql`${missionsTable.startedAt} DESC`)
+        .limit(limit);
+
+      const ids = rows.map((r) => r.id);
+      const taskCountRows = ids.length > 0
+        ? await db
+            .select({
+              missionId: missionTasksTable.missionId,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(missionTasksTable)
+            .where(sql`${missionTasksTable.missionId} IN (${sql.join(ids.map((id) => sql`${id}`), sql`,`)})`)
+            .groupBy(missionTasksTable.missionId)
+        : [];
+      const countMap = new Map<string, number>(taskCountRows.map((r) => [r.missionId, Number(r.count) || 0]));
+
+      const recentMissions = rows.map((r) => ({
+        id: r.id,
+        goal: r.goal.slice(0, 100),
+        status: r.status,
+        taskCount: countMap.get(r.id) || 0,
+      }));
+      return c.json({ metrics, recentMissions });
+    } catch (err) {
+      // Fallback to in-memory if DB read fails (e.g. transient connection issue)
+      console.error("[hive/status] DB read failed, using in-memory fallback:", err);
+      const missions = hive.listMissions(limit);
+      return c.json({
+        metrics,
+        recentMissions: missions.map((m) => ({
+          id: m.id,
+          goal: m.goal.slice(0, 100),
+          status: m.status,
+          taskCount: m.tasks.length,
+        })),
+      });
+    }
   });
 
   app.post("/api/hive/dispatch", async (c) => {
@@ -600,10 +759,55 @@ async function main() {
     return c.json({ missionId: mission.id || "dispatching", status: "planning" });
   });
 
-  app.get("/api/hive/missions/:id", (c) => {
-    const mission = hive.getMission(c.req.param("id"));
-    if (!mission) return c.json({ error: "Mission not found" }, 404);
-    return c.json(mission);
+  app.get("/api/hive/missions/:id", async (c) => {
+    const id = c.req.param("id");
+
+    // Running missions: in-memory map has the freshest live state.
+    const live = hive.getMission(id);
+    if (live) return c.json(live);
+
+    // Historical missions: read from DB.
+    try {
+      const [row] = await db
+        .select()
+        .from(missionsTable)
+        .where(sql`${missionsTable.id} = ${id}`)
+        .limit(1);
+      if (!row) return c.json({ error: "Mission not found" }, 404);
+
+      const taskRows = await db
+        .select()
+        .from(missionTasksTable)
+        .where(sql`${missionTasksTable.missionId} = ${id}`);
+
+      // Strip the mission-id prefix from stored task IDs so clients see the
+      // original Commander-assigned short ID.
+      const prefix = `${id}:`;
+      return c.json({
+        id: row.id,
+        goal: row.goal,
+        model: row.model,
+        status: row.status,
+        result: row.result,
+        error: row.error,
+        createdAt: row.startedAt,
+        completedAt: row.completedAt,
+        tasks: taskRows.map((t) => ({
+          id: t.id.startsWith(prefix) ? t.id.slice(prefix.length) : t.id,
+          title: t.title,
+          prompt: t.prompt,
+          status: t.status,
+          result: t.result,
+          error: t.error,
+          repairAttempts: t.repairAttempts,
+          startedAt: t.startedAt,
+          completedAt: t.completedAt,
+        })),
+      });
+    } catch (err) {
+      console.error("[hive/missions/:id] DB read failed:", err);
+      return c.json({ error: "Mission not found" }, 404);
+    }
   });
 
   app.get("/api/hive/profiles", (c) => {

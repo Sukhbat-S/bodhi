@@ -42,6 +42,8 @@ export interface MissionBudget {
 export interface Mission {
   id: string;
   goal: string;
+  /** Model tier the mission was dispatched with (used by Commander for decomposition) */
+  model?: ModelTier;
   status: MissionStatus;
   tasks: HiveTask[];
   budget: MissionBudget;

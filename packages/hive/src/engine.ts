@@ -14,6 +14,12 @@ import { runAutoChecks, runContainmentChecks, formatResults } from "./verificati
 
 const DEFAULT_BUDGET: MissionBudget = { maxTasks: 20, maxDurationMs: 30 * 60 * 1000 };
 
+/**
+ * Max terminal missions kept in the in-memory cache. Historical missions
+ * live in the DB — this is just a live cache for active execution.
+ */
+const MAX_CACHED_TERMINAL_MISSIONS = 30;
+
 interface HiveEngineConfig {
   pool: AgentPool;
   /** Optional: memory service for agent profiles + cross-agent knowledge */
@@ -26,7 +32,7 @@ interface HiveEngineConfig {
 }
 
 export interface HiveEvent {
-  type: "mission:created" | "mission:completed" | "mission:failed" |
+  type: "mission:created" | "mission:planned" | "mission:completed" | "mission:failed" |
         "task:started" | "task:completed" | "task:failed" | "task:repair";
   missionId: string;
   taskId?: string;
@@ -93,19 +99,37 @@ export class HiveEngine {
     const mission: Mission = {
       id: randomUUID(),
       goal,
+      model,
       status: "planning",
       tasks: [],
       budget: { ...DEFAULT_BUDGET, ...budget },
       createdAt: new Date(),
     };
     this.missions.set(mission.id, mission);
-    this.emit({ type: "mission:created", missionId: mission.id, data: { goal } });
+    this.emit({ type: "mission:created", missionId: mission.id, data: { goal, model } });
 
     try {
       // Phase 1: Commander decomposes the goal into a task DAG
       console.log(`[hive] Mission ${mission.id.slice(0, 8)}: decomposing "${goal.slice(0, 80)}..."`);
       const tasks = await this.decompose(mission, model);
       mission.tasks = tasks;
+
+      // Emit planned event with the full task list so persistence + dashboard can
+      // materialize task rows before execution starts.
+      this.emit({
+        type: "mission:planned",
+        missionId: mission.id,
+        data: {
+          tasks: tasks.map((t) => ({
+            id: t.id,
+            role: t.role,
+            model: t.model,
+            prompt: t.prompt,
+            dependsOn: t.dependsOn,
+            priority: t.priority,
+          })),
+        },
+      });
 
       // Phase 2: Execute the DAG
       console.log(`[hive] Mission ${mission.id.slice(0, 8)}: executing ${tasks.length} tasks`);
@@ -128,7 +152,27 @@ export class HiveEngine {
       this.emit({ type: "mission:failed", missionId: mission.id, data: { error: mission.error } });
     }
 
+    // Trim the in-memory cache to prevent unbounded growth during long-lived
+    // server runs. The DB is the source of truth for historical missions.
+    this.trimCache();
+
     return mission;
+  }
+
+  /**
+   * Evict the oldest terminal (completed/failed/cancelled) missions from
+   * the in-memory cache when we exceed MAX_CACHED_TERMINAL_MISSIONS.
+   * Running missions are never evicted.
+   */
+  private trimCache(): void {
+    const terminal = Array.from(this.missions.values())
+      .filter((m) => m.status === "completed" || m.status === "failed" || m.status === "cancelled")
+      .sort((a, b) => (a.completedAt?.getTime() ?? 0) - (b.completedAt?.getTime() ?? 0));
+    const excess = terminal.length - MAX_CACHED_TERMINAL_MISSIONS;
+    if (excess <= 0) return;
+    for (let i = 0; i < excess; i++) {
+      this.missions.delete(terminal[i].id);
+    }
   }
 
   /**

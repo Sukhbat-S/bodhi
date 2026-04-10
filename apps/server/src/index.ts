@@ -44,6 +44,7 @@ import { GitHubService, GitHubContextProvider } from "@seneca/github";
 import { VercelService, VercelContextProvider } from "@seneca/vercel";
 import { SupabaseAwarenessService, SupabaseAwarenessProvider } from "@seneca/supabase-awareness";
 import { MetaService } from "@seneca/social";
+import { BybitClient, TradingService, TradingContextProvider } from "@seneca/trading";
 import { desc } from "drizzle-orm";
 import { briefings, activeSessions as activeSessionsTable, sessionMessages as sessionMessagesTable, contentQueue, missions as missionsTable, missionTasks as missionTasksTable } from "@seneca/db";
 import { loadConfig } from "./config.js";
@@ -267,6 +268,37 @@ async function main() {
     console.log("  Push: skipped (no VAPID keys)");
   }
 
+  // 6h. Initialize Trading (optional — Bybit crypto trading agent)
+  // TradingService works with the DB alone (needed for journaling +
+  // dashboard queries even without keys). The BybitClient is only wired
+  // when Bybit credentials are present.
+  const tradingService = new TradingService(db);
+  let bybitClient: BybitClient | null = null;
+
+  if (config.BYBIT_API_KEY && config.BYBIT_API_SECRET) {
+    const useTestnet = config.BYBIT_USE_TESTNET !== "false"; // default TRUE (safety)
+    bybitClient = new BybitClient({
+      apiKey: config.BYBIT_API_KEY,
+      apiSecret: config.BYBIT_API_SECRET,
+      useTestnet,
+    });
+    try {
+      const balance = await bybitClient.getBalance();
+      console.log(
+        `  Trading: Bybit ${useTestnet ? "TESTNET" : "LIVE"} connected — ` +
+        `$${balance.totalUsd.toFixed(2)} USD`,
+      );
+    } catch (err) {
+      console.error(
+        `  Trading: Bybit ${useTestnet ? "TESTNET" : "LIVE"} connection FAILED —`,
+        err instanceof Error ? err.message : err,
+      );
+      bybitClient = null;
+    }
+  } else {
+    console.log("  Trading: journal-only (no BYBIT_API_KEY — dashboard works, exchange client off)");
+  }
+
   // 7. Initialize Context Engine
   const contextEngine = new ContextEngine();
   contextEngine.register(memoryProvider);
@@ -293,11 +325,16 @@ async function main() {
   if (supabaseAwarenessProvider) {
     contextEngine.register(supabaseAwarenessProvider);
   }
+  const tradingProvider = new TradingContextProvider({
+    service: tradingService,
+    client: bybitClient ?? undefined,
+  });
+  contextEngine.register(tradingProvider);
   const entityProvider = new EntityContextProvider(entityService);
   contextEngine.register(entityProvider);
   const goalProvider = new GoalContextProvider(memoryService);
   contextEngine.register(goalProvider);
-  const providerCount = 3 + (notionProvider ? 1 : 0) + (gmailProvider ? 1 : 0) + (calendarProvider ? 1 : 0) + (githubProvider ? 1 : 0) + (vercelProvider ? 1 : 0) + (supabaseAwarenessProvider ? 1 : 0);
+  const providerCount = 4 + (notionProvider ? 1 : 0) + (gmailProvider ? 1 : 0) + (calendarProvider ? 1 : 0) + (githubProvider ? 1 : 0) + (vercelProvider ? 1 : 0) + (supabaseAwarenessProvider ? 1 : 0);
   console.log(`  Context: initialized (${providerCount} provider${providerCount > 1 ? "s" : ""}, includes project knowledge)`);
 
   // 8. Initialize Agent Core (routes through Bridge, not Anthropic API)
@@ -827,6 +864,107 @@ async function main() {
     if (!size || size < 1 || size > 50) return c.json({ error: "size must be 1-50" }, 400);
     hive.scale(size);
     return c.json({ poolSize: size });
+  });
+
+  // ─── Trading API ─────────────────────────────────────────
+  // Journal endpoints work without exchange credentials. Exchange
+  // endpoints only work when BybitClient is wired.
+
+  app.get("/api/trading/status", async (c) => {
+    const [stats, open] = await Promise.all([
+      tradingService.getStats(),
+      tradingService.getOpen(),
+    ]);
+    let balance = null;
+    let mode: "testnet" | "live" | "journal-only" = "journal-only";
+    if (bybitClient) {
+      mode = bybitClient.isTestnet ? "testnet" : "live";
+      try {
+        balance = await bybitClient.getBalance();
+      } catch (err) {
+        console.error("[trading/status] balance fetch failed:", err);
+      }
+    }
+    return c.json({ mode, balance, stats, openPositions: open });
+  });
+
+  app.get("/api/trading/trades", async (c) => {
+    const limit = Math.min(Number(c.req.query("limit") || 50), 200);
+    const paperOnly = c.req.query("paper") === "true";
+    const trades = await tradingService.getRecent(limit, paperOnly);
+    return c.json({ trades });
+  });
+
+  app.get("/api/trading/trades/:id", async (c) => {
+    const trade = await tradingService.getById(c.req.param("id"));
+    if (!trade) return c.json({ error: "Trade not found" }, 404);
+    return c.json(trade);
+  });
+
+  app.post("/api/trading/trades/open", async (c) => {
+    try {
+      const body = await c.req.json();
+      // Default to paper trades unless explicitly overridden AND real client wired.
+      // This is a safety gate: real trades require explicit opt-in AND live BybitClient.
+      const input = {
+        ...body,
+        isPaper: body.isPaper === false && bybitClient && !bybitClient.isTestnet ? false : true,
+      };
+      const trade = await tradingService.openTrade(input);
+      return c.json(trade);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  app.post("/api/trading/trades/:id/close", async (c) => {
+    try {
+      const body = await c.req.json<{ exitPrice: number; postmortem: string }>();
+      const trade = await tradingService.closeTrade({
+        id: c.req.param("id"),
+        exitPrice: body.exitPrice,
+        postmortem: body.postmortem,
+      });
+      return c.json(trade);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  app.post("/api/trading/trades/:id/cancel", async (c) => {
+    try {
+      const body = await c.req.json<{ reason: string }>();
+      const trade = await tradingService.cancelTrade(c.req.param("id"), body.reason);
+      return c.json(trade);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  app.get("/api/trading/balance", async (c) => {
+    if (!bybitClient) {
+      return c.json({ error: "Bybit client not configured (missing BYBIT_API_KEY)" }, 503);
+    }
+    try {
+      const balance = await bybitClient.getBalance();
+      return c.json({ mode: bybitClient.isTestnet ? "testnet" : "live", balance });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
+  app.get("/api/trading/ticker/:symbol", async (c) => {
+    if (!bybitClient) {
+      return c.json({ error: "Bybit client not configured" }, 503);
+    }
+    try {
+      // URL-encoded symbols use underscore-as-slash convention to avoid path issues
+      const symbol = decodeURIComponent(c.req.param("symbol")).replace(/_/g, "/");
+      const ticker = await bybitClient.getTicker(symbol);
+      return c.json({ symbol, ...ticker });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
   });
   app.get("/api/missions", async (c) => {
     const rows = await db.select().from(missionsTable).orderBy(sql`${missionsTable.startedAt} DESC`).limit(20);

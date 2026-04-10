@@ -57,6 +57,11 @@ const envSchema = z.object({
   // Claude Code CLI auth (optional — env var bypasses file-based OAuth)
   CLAUDE_CODE_OAUTH_TOKEN: z.string().optional(),
 
+  // Bybit trading (optional — enables crypto trading agent)
+  BYBIT_API_KEY: z.string().optional(),
+  BYBIT_API_SECRET: z.string().optional(),
+  BYBIT_USE_TESTNET: z.string().optional(), // "true" (default) or "false"
+
   // Web Push Notifications (optional — enables PWA push to dashboard)
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),

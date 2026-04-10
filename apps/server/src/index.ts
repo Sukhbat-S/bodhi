@@ -435,6 +435,8 @@ async function main() {
         return res.json() as Promise<{ missionId: string }>;
       },
     },
+    projectRoot: path.resolve(__dirname, "../../.."),
+    tradingEnabled: !!config.BYBIT_API_KEY,
   });
   console.log("  Scheduler: initialized (morning/evening/weekly briefings + workflows)");
 

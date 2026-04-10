@@ -293,29 +293,84 @@ def print_dashboard(btc, eth, dma, fng, dom, funding):
     print()
 
 
+# ── JSON Output ───────────────────────────────────────────────
+
+def build_snapshot(btc, eth, dma, fng, dom, funding):
+    """Build a machine-readable snapshot dict from all fetched data."""
+    now_utc = datetime.now(timezone.utc)
+
+    # Classify all signals
+    dma_label, dma_bias, dma_score = classify_200dma(dma["ratio"])
+    fng_label, fng_bias, fng_score = classify_fng(fng["value"])
+    fund_label, fund_bias, fund_score = classify_funding(funding["rate"])
+    dom_label, dom_bias, dom_score = classify_dominance(dom["dominance"])
+
+    signals = [dma_score, fng_score, fund_score, dom_score]
+    bullish_count = sum(1 for s in signals if s > 0)
+
+    if bullish_count >= 3:
+        signal = "ACCUMULATE"
+        dca_multiplier = 2
+    elif bullish_count >= 2:
+        signal = "NORMAL_DCA"
+        dca_multiplier = 1
+    elif bullish_count == 1:
+        signal = "REDUCE"
+        dca_multiplier = 0.5
+    else:
+        signal = "SKIP"
+        dca_multiplier = 0
+
+    return {
+        "timestamp": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "btc_price": btc["price"] if btc["ok"] else None,
+        "eth_price": eth["price"] if eth["ok"] else None,
+        "btc_24h_pct": round(btc["change_pct"], 2) if btc["ok"] else None,
+        "price_to_200dma": dma["ratio"] if dma["ok"] else None,
+        "fear_greed": fng["value"] if fng["ok"] else None,
+        "btc_dominance": dom["dominance"] if dom["ok"] else None,
+        "funding_rate": funding["rate"] if funding["ok"] else None,
+        "bullish_count": bullish_count,
+        "signal": signal,
+        "dca_multiplier": dca_multiplier,
+    }
+
+
 # ── Main ───────────────────────────────────────────────────────
 
 def main():
-    print("Fetching market data...\n")
+    import json as _json
+
+    json_mode = "--json" in sys.argv
+
+    if not json_mode:
+        print("Fetching market data...\n")
 
     # Fetch all data (sequential to respect rate limits)
     btc = fetch_btc_price()
     eth = fetch_eth_price()
 
-    print("  Fetching 200-day MA data...")
+    if not json_mode:
+        print("  Fetching 200-day MA data...")
     dma = fetch_200dma_ratio()
 
-    print("  Fetching Fear & Greed index...")
+    if not json_mode:
+        print("  Fetching Fear & Greed index...")
     fng = fetch_fear_greed()
 
-    print("  Fetching BTC dominance...")
+    if not json_mode:
+        print("  Fetching BTC dominance...")
     dom = fetch_btc_dominance()
 
-    print("  Fetching funding rate...")
+    if not json_mode:
+        print("  Fetching funding rate...")
     funding = fetch_funding_rate()
 
-    # Display
-    print_dashboard(btc, eth, dma, fng, dom, funding)
+    if json_mode:
+        snapshot = build_snapshot(btc, eth, dma, fng, dom, funding)
+        print(_json.dumps(snapshot))
+    else:
+        print_dashboard(btc, eth, dma, fng, dom, funding)
 
 
 if __name__ == "__main__":

@@ -6,14 +6,16 @@
 // ============================================================
 
 import cron, { type ScheduledTask } from "node-cron";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { execSync } from "node:child_process";
+import { resolve, dirname } from "node:path";
 import type { Agent, ContextEngine } from "@seneca/core";
 import type { MemoryService } from "@seneca/memory";
 import type { MemorySynthesizer } from "@seneca/memory";
 import type { InsightGenerator, Insight } from "@seneca/memory";
 
 export type BriefingType = "morning" | "evening" | "weekly";
-export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest" | "workflow" | "persona-refresh" | "daily-intel" | "jewelry-changelog" | "content-generate" | "messenger-intel";
+export type SchedulerJobType = BriefingType | "synthesis" | "inbox-triage" | "build-digest" | "workflow" | "persona-refresh" | "daily-intel" | "jewelry-changelog" | "content-generate" | "messenger-intel" | "trading-signals";
 
 interface TelegramSender {
   sendProactiveMessage(text: string): Promise<void>;
@@ -91,6 +93,10 @@ export interface SchedulerConfig {
   metaService?: { getConversations(since: Date): Promise<{ totalMessages: number; summary: string }> } | null;
   contentStore?: ContentStore | null;
   missionDispatcher?: MissionDispatcher | null;
+  /** Absolute path to the monorepo root — needed for running Python scripts etc. */
+  projectRoot?: string;
+  /** Set to true when BYBIT_API_KEY is configured — enables trading-signals cron. */
+  tradingEnabled?: boolean;
 }
 
 export interface MissionDispatcher {
@@ -264,7 +270,7 @@ export class Scheduler {
     this.config = config;
 
     // Initialize job records
-    for (const type of ["morning", "evening", "weekly", "synthesis", "inbox-triage", "build-digest", "daily-intel", "jewelry-changelog", "content-generate", "messenger-intel"] as SchedulerJobType[]) {
+    for (const type of ["morning", "evening", "weekly", "synthesis", "inbox-triage", "build-digest", "daily-intel", "jewelry-changelog", "content-generate", "messenger-intel", "trading-signals"] as SchedulerJobType[]) {
       this.jobs.set(type, {
         type,
         lastRun: null,
@@ -385,6 +391,16 @@ export class Scheduler {
       );
       console.log("[scheduler] Messenger intel: Sun 19:00 UB");
     }
+
+    // Trading signals: 00:00 UTC (= 08:00 UB) — on-chain signal monitor
+    if (this.config.tradingEnabled && this.config.projectRoot) {
+      this.tasks.push(
+        cron.schedule("0 0 * * *", () => this.runTradingSignals(), {
+          timezone: "UTC",
+        })
+      );
+      console.log("[scheduler] Trading signals: 00:00 UTC (08:00 UB)");
+    }
   }
 
   /**
@@ -423,6 +439,9 @@ export class Scheduler {
     }
     if (type === "messenger-intel") {
       return this.runMessengerIntel();
+    }
+    if (type === "trading-signals") {
+      return this.runTradingSignals();
     }
     if (type === "workflow" && workflowId) {
       return this.runWorkflow(workflowId);
@@ -1364,6 +1383,111 @@ Under 200 words.`;
       job.lastRun = new Date();
       job.lastResult = "error";
       job.lastDurationMs = Date.now() - startTime;
+      return { status: "error", error: errMsg };
+    }
+  }
+
+  /**
+   * Trading signals: run on-chain monitor, compare with last signal,
+   * alert on change via Telegram, store snapshot as memory.
+   * Runs daily at 00:00 UTC (08:00 UB).
+   */
+  private async runTradingSignals(): Promise<{ status: string; content?: string; error?: string }> {
+    const startTime = Date.now();
+    const job = this.jobs.get("trading-signals")!;
+
+    if (!this.config.projectRoot) {
+      return { status: "skipped", error: "projectRoot not configured" };
+    }
+
+    const scriptPath = resolve(this.config.projectRoot, "packages/trading/backtest/onchain_monitor.py");
+    const signalFilePath = resolve(this.config.projectRoot, "data/last-trading-signal.json");
+
+    try {
+      // 1. Run the Python script with --json flag
+      console.log("[scheduler] Running on-chain signal monitor...");
+      const output = execSync(`python3 "${scriptPath}" --json`, {
+        timeout: 120_000, // 2 minute timeout (API calls can be slow)
+        encoding: "utf-8",
+        cwd: this.config.projectRoot,
+      }).trim();
+
+      // 2. Parse JSON output
+      let snapshot: {
+        timestamp: string;
+        btc_price: number | null;
+        eth_price: number | null;
+        btc_24h_pct: number | null;
+        price_to_200dma: number | null;
+        fear_greed: number | null;
+        btc_dominance: number | null;
+        funding_rate: number | null;
+        bullish_count: number;
+        signal: string;
+        dca_multiplier: number;
+      };
+
+      try {
+        snapshot = JSON.parse(output);
+      } catch {
+        console.error("[scheduler] Trading signals: failed to parse JSON output:", output.slice(0, 200));
+        job.lastRun = new Date();
+        job.lastResult = "error";
+        job.lastDurationMs = Date.now() - startTime;
+        return { status: "error", error: "Failed to parse on-chain monitor JSON" };
+      }
+
+      // 3. Load previous signal for comparison
+      let previousSignal: string | null = null;
+      try {
+        const prev = await readFile(signalFilePath, "utf-8");
+        const prevData = JSON.parse(prev);
+        previousSignal = prevData.signal || null;
+      } catch {
+        // No previous signal file — first run
+      }
+
+      // 4. Save current snapshot to file
+      await mkdir(dirname(signalFilePath), { recursive: true });
+      await writeFile(signalFilePath, JSON.stringify(snapshot, null, 2), "utf-8");
+      console.log(`[scheduler] Trading signal saved: ${snapshot.signal} (${snapshot.bullish_count}/4 bullish)`);
+
+      // 5. Detect signal change (dashboard + memory only — no Telegram)
+      const signalChanged = previousSignal !== null && previousSignal !== snapshot.signal;
+      if (signalChanged) {
+        console.log(`[scheduler] Trading signal CHANGED: ${previousSignal} → ${snapshot.signal}`);
+      }
+
+      // 6. Store snapshot as BODHI memory
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        const signalDesc = signalChanged
+          ? `Trading signal changed from ${previousSignal} to ${snapshot.signal}`
+          : `Trading signal: ${snapshot.signal} (unchanged)`;
+        await this.config.memoryService.store({
+          content: `On-chain signal (${today}): ${signalDesc}. BTC $${snapshot.btc_price?.toLocaleString() ?? "N/A"}, ${snapshot.bullish_count}/4 bullish. DCA ${snapshot.dca_multiplier}x. Price/200DMA=${snapshot.price_to_200dma ?? "N/A"}, FNG=${snapshot.fear_greed ?? "N/A"}.`,
+          type: "event",
+          importance: signalChanged ? 0.8 : 0.4,
+          tags: ["trading-signal", snapshot.signal.toLowerCase(), today],
+        });
+      } catch {
+        // Non-critical — don't fail the job if memory store fails
+      }
+
+      job.lastRun = new Date();
+      job.lastResult = "sent";
+      job.lastDurationMs = Date.now() - startTime;
+
+      console.log(`[scheduler] Trading signals complete (${Date.now() - startTime}ms)`);
+      return { status: "sent", content: `Signal: ${snapshot.signal} (${snapshot.bullish_count}/4 bullish)` };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[scheduler] Trading signals failed: ${errMsg}`);
+
+      job.lastRun = new Date();
+      job.lastResult = "error";
+      job.lastDurationMs = Date.now() - startTime;
+
       return { status: "error", error: errMsg };
     }
   }

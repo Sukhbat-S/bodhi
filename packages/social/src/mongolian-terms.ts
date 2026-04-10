@@ -104,17 +104,17 @@ export const CURRICULUM: CurriculumTopic[] = [
 
   // Week 7-8: Real Projects
   { lessonNumber: 19, titleMN: "Вэб сайт бүтээх", titleEN: "Build a website", description: "Create a full website from scratch with Claude Code — start to deploy", difficulty: "advanced", slideCount: 7, hasCode: true },
-  { lessonNumber: 20, titleMN: "API бичих", titleEN: "Write an API", description: "Build a REST API with Hono/Express — routes, middleware, database", difficulty: "advanced", slideCount: 7, hasCode: true },
-  { lessonNumber: 21, titleMN: "Dashboard бүтээх", titleEN: "Build a dashboard", description: "React dashboard with charts, real-time data, responsive design", difficulty: "advanced", slideCount: 7, hasCode: true },
-  { lessonNumber: 22, titleMN: "Telegram bot бүтээх", titleEN: "Build a Telegram bot", description: "Create an interactive bot with commands, memory, and AI responses", difficulty: "advanced", slideCount: 7, hasCode: true },
-  { lessonNumber: 23, titleMN: "E-commerce боломжууд", titleEN: "E-commerce features", description: "Payment integration, product management, order tracking", difficulty: "advanced", slideCount: 7, hasCode: true },
-  { lessonNumber: 24, titleMN: "Memory system бүтээх", titleEN: "Build a memory system", description: "Embeddings, vector search, knowledge persistence — build your own memory", difficulty: "advanced", slideCount: 7, hasCode: true },
+  { lessonNumber: 20, titleMN: "Хэрэгсэл дуудах (Tool Use)", titleEN: "Tool Use and Function Calling", description: "Teach Claude to call your own functions — weather, database, APIs — with typed JSON responses", difficulty: "advanced", slideCount: 7, hasCode: true },
+  { lessonNumber: 21, titleMN: "RAG: мэдлэгийн сан", titleEN: "RAG: Knowledge Base", description: "Retrieval-Augmented Generation — embed docs, search with pgvector, inject context into prompts", difficulty: "advanced", slideCount: 7, hasCode: true },
+  { lessonNumber: 22, titleMN: "Мэдэгдлийн систем бүтээх", titleEN: "Building Notification Systems", description: "Send Telegram/email alerts on events — cron triggers, webhook listeners, alert routing", difficulty: "advanced", slideCount: 7, hasCode: true },
+  { lessonNumber: 23, titleMN: "Хуваарьт автомат ажлууд", titleEN: "Scheduled Automated Tasks", description: "node-cron schedules, idempotent jobs, retry logic, and monitoring for autonomous AI workflows", difficulty: "advanced", slideCount: 7, hasCode: true },
+  { lessonNumber: 24, titleMN: "Dashboard бүтээх", titleEN: "Building Dashboards", description: "React + Tailwind dashboard with live data, charts, status cards, and API-driven updates", difficulty: "advanced", slideCount: 7, hasCode: true },
 
   // Week 9-10: Mastery
-  { lessonNumber: 25, titleMN: "Claude Code-ийн нууцууд", titleEN: "Secrets & tips", description: "Hidden features, power-user shortcuts, lesser-known capabilities", difficulty: "mastery", slideCount: 6, hasCode: true },
+  { lessonNumber: 25, titleMN: "Telegram бот хийх", titleEN: "Building a Telegram Bot", description: "Full Telegraf bot with commands, conversation memory, AI responses, and single-user access gate", difficulty: "mastery", slideCount: 7, hasCode: true },
   { lessonNumber: 26, titleMN: "Бүтээмж 10x нэмэгдүүлэх", titleEN: "10x productivity", description: "Workflow optimization, context management, parallel work patterns", difficulty: "mastery", slideCount: 6, hasCode: false },
-  { lessonNumber: 27, titleMN: "Voice mode ашиглах", titleEN: "Using voice mode", description: "Talk to Claude Code — voice input, dictation, hands-free coding", difficulty: "mastery", slideCount: 5, hasCode: false },
-  { lessonNumber: 28, titleMN: "Open source хувь нэмэр", titleEN: "Contributing to open source", description: "Use Claude Code to understand, fix, and contribute to open source projects", difficulty: "mastery", slideCount: 6, hasCode: true },
-  { lessonNumber: 29, titleMN: "AI companion бүтээх", titleEN: "Build your own AI companion", description: "The BODHI story — how to build a personal AI system that knows you", difficulty: "mastery", slideCount: 7, hasCode: true },
-  { lessonNumber: 30, titleMN: "Ирээдүйн AI хөгжүүлэлт", titleEN: "Future of AI development", description: "Where coding with AI is heading — agents, autonomy, collaboration", difficulty: "mastery", slideCount: 5, hasCode: false },
+  { lessonNumber: 27, titleMN: "AI аппын аюулгүй байдал", titleEN: "Security Best Practices", description: "Secure your AI-powered apps — secrets management, input validation, auth, safe deployment", difficulty: "mastery", slideCount: 6, hasCode: true },
+  { lessonNumber: 28, titleMN: "AI систем өргөтгөх", titleEN: "Scaling AI Systems", description: "Scale AI apps from prototype to production — caching, rate limits, queues, cost control", difficulty: "mastery", slideCount: 6, hasCode: true },
+  { lessonNumber: 29, titleMN: "AI бизнес загвар", titleEN: "AI Business Models", description: "Monetize AI apps — subscription vs usage pricing, cost structure, positioning in the market", difficulty: "mastery", slideCount: 6, hasCode: false },
+  { lessonNumber: 30, titleMN: "Олон нийтэд бүтээх — Capstone", titleEN: "Building in Public Capstone", description: "Ship your AI project publicly — launch checklist, build-in-public strategy, grow an audience", difficulty: "mastery", slideCount: 7, hasCode: false },
 ];

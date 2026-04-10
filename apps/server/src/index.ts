@@ -2029,6 +2029,19 @@ Return ONLY valid JSON:
     return c.json(result);
   });
 
+  // Delete a single queue item
+  app.delete("/api/content/queue/:id", async (c) => {
+    const id = c.req.param("id");
+    await db.delete(contentQueue).where(sql`${contentQueue.id} = ${id}`);
+    return c.json({ deleted: true, id });
+  });
+
+  // Wipe all queue items — useful for clean slate
+  app.delete("/api/content/queue", async (c) => {
+    const result = await db.delete(contentQueue).returning({ id: contentQueue.id });
+    return c.json({ deleted: result.length });
+  });
+
   // Serve generated carousel images
   app.get("/content/images/:filename", async (c) => {
     const filename = c.req.param("filename");

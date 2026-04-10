@@ -371,15 +371,10 @@ export class Scheduler {
       console.log("[scheduler] Build digest: Mon 10:00 UB");
     }
 
-    // Content generation: Mon/Wed/Fri 06:00 — generate carousel for next lesson
-    if (this.config.contentStore) {
-      this.tasks.push(
-        cron.schedule("0 6 * * 1,3,5", () => this.runContentGenerate(), {
-          timezone: tz,
-        })
-      );
-      console.log("[scheduler] Content generate: Mon/Wed/Fri 06:00 UB");
-    }
+    // Content generation is manual-only — removed auto-cron Apr 9, 2026.
+    // Sukhbat wants one-click button control on the dashboard, not autonomous
+    // series generation. Manual trigger still works via /api/content/generate
+    // and the "Generate Next Lesson" button in the Content Pipeline page.
 
     // Messenger intelligence: Sunday 19:00 — analyze customer conversations
     if (this.config.metaService) {

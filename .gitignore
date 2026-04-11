@@ -20,6 +20,14 @@ secrets.json
 configs/persona/*.personal.md
 TASKS.md
 
+# Personal business files
+deliverables/
+research/
+contracts/
+briefs/
+drafts/
+data/
+
 # Local assets
 branding/
 .tmp/
@@ -27,3 +35,4 @@ logs/
 .vercel/
 .cache/
 *.tsbuildinfo
+docs/
